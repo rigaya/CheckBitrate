@@ -464,8 +464,10 @@ void option_error(const TCHAR *option, const TCHAR *argvalue) {
 }
 
 void print_help() {
-    tstring str;
+    tstring str = tstring(_T("CheckBitrate ")) + VER_STR_FILEVERSION_TCHAR + _T(" by rigaya\n");
     str += _T("Usage: <exe> [options] <target filepath1> [<target filepath2>] ...\n");
+    str += _T("\n");
+    str += _T("Options:\n");
     str += _T("-i,--interval <float>   bitrate calc interval in seconds.\n");
     _ftprintf(stdout, str.c_str());
 }
