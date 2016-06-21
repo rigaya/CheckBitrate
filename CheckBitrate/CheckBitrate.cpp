@@ -221,11 +221,16 @@ int check(AVFormatContext *pFormatCtx, map<int, StreamHandler>& streamHandlers, 
     AVPacket pkt;
     av_init_packet(&pkt);
     auto tmupdate = std::chrono::system_clock::now();
+    double lastprogress = 0.0;
     while (av_read_frame(pFormatCtx, &pkt) >= 0) {
         auto tmnow = std::chrono::system_clock::now();
         if (tmnow - tmupdate > std::chrono::milliseconds(500)) {
-            tmupdate = tmnow;
-            _ftprintf(stderr, _T("reading input file %.2f%%  \r"), pkt.pos * 100.0 / (double)filesize);
+            double progress = pkt.pos * 100.0 / (double)filesize;
+            if (progress > lastprogress) {
+                tmupdate = tmnow;
+                _ftprintf(stderr, _T("reading input file %.2f%%  \r"), pkt.pos * 100.0 / (double)filesize);
+                lastprogress = progress;
+            }
         }
         auto pCodecCtx = pFormatCtx->streams[pkt.stream_index]->codec;
         if (pCodecCtx->codec_type == AVMEDIA_TYPE_VIDEO) {
