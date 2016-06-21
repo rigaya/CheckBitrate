@@ -4,7 +4,7 @@
 csvをエクセルなりなんなりでグラフにしてみてください。
 
 ## ダウンロード & 更新履歴
-[rigayaの日記兼メモ帳>>](http://rigaya34589.blog135.fc2.com/blog-category-10.html)
+[rigayaの日記兼メモ帳>>](http://rigaya34589.blog135.fc2.com/blog-category-21.html)
 
 ## 動作環境
 Windows 7, 8, 8.1, 10 (x86/x64)
