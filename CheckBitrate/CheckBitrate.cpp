@@ -28,6 +28,7 @@
 #include <cstdio>
 #include <cstdint>
 #include <algorithm>
+#include <numeric>
 #include <memory>
 #include <map>
 #include <chrono>
@@ -346,7 +347,45 @@ static int writeBitrate(const tstring& filename, StreamHandler& streamHandler, d
     return 0;
 }
 
-int run(const tstring& filename, double interval = 0.0, int nVideoTrack = 0, int nStreamId = 0) {
+static int writeGopLength(const tstring& filename, StreamHandler& streamHandler) {
+    double tick = 0.0;
+    uint64_t sizetick = 0;
+    uint64_t sizesum = 0;
+    FILE *fp = NULL;
+    if (_tfopen_s(&fp, filename.c_str(), _T("w"))) {
+        _ftprintf(stderr, _T("failed to open output file \"%s\"\n"), filename.c_str());
+        return 1;
+    }
+    vector<uint32_t> goplenList;
+    uint32_t goplen = 0;
+    uint32_t index = (uint32_t)-1;
+    for (int poc = 0; ; poc++) {
+        auto framepos = streamHandler.framePosList.copy(poc, &index);
+        if (framepos.poc == AVQSV_POC_INVALID && framepos.pts == 0) {
+            break;
+        }
+        if (framepos.pts != AV_NOPTS_VALUE && framepos.poc != AVQSV_POC_INVALID) {
+            if ((framepos.flags & 1) && goplen > 0) {
+                goplenList.push_back(goplen);
+                goplen = 0;
+            }
+            goplen++;
+        }
+    }
+    goplenList.push_back(goplen);
+    _ftprintf(fp, _T("gop len max: %d\n"), std::accumulate(goplenList.begin(), goplenList.end(), 0, [](uint32_t a, uint32_t b) { return std::max(a, b); }));
+
+    const auto goplenAvg = std::accumulate(goplenList.begin(), goplenList.end(), 0, [](uint32_t a, uint32_t b) { return a + b; }) / (double)goplenList.size();
+    _ftprintf(fp, _T("        avg: %.2f\n"), goplenAvg);
+
+    const auto goplenStd = std::sqrt(std::accumulate(goplenList.begin(), goplenList.end(), 0.0, [goplenAvg](double a, uint32_t b) { return a + (goplenAvg - b) * (goplenAvg - b); }) / (double)std::max<int>(1, goplenList.size() - 1));
+    _ftprintf(fp, _T("        std: %.2f\n"), goplenStd);
+    fclose(fp);
+    return 0;
+}
+
+
+int run(const tstring& filename, double interval = 0.0, bool check_goplen = false, int nVideoTrack = 0, int nStreamId = 0) {
     av_register_all();
     avcodec_register_all();
     av_log_set_level(AV_LOG_ERROR);
@@ -448,6 +487,9 @@ int run(const tstring& filename, double interval = 0.0, int nVideoTrack = 0, int
         //ist->second.framePosList.printList(outfile.c_str());
 
         writeBitrate(filename + _T(".track") + std::to_tstring(ist->first + 1) + _T(".bitrate.csv"), ist->second, interval);
+        if (check_goplen) {
+            writeGopLength(filename + _T(".track") + std::to_tstring(ist->first + 1) + _T(".goplen.txt"), ist->second);
+        }
     }
 
     if (pFormatOption) {
@@ -484,12 +526,16 @@ int _tmain(int argc, TCHAR **argv) {
     }
     vector<tstring> filelist;
     double interval = 0.0;
+    bool check_goplen = false;
     for (int i = 1; i < argc; i++) {
         const TCHAR *option_name = nullptr;
         if (argv[i][0] == _T('-')) {
             switch (argv[i][1]) {
             case 'i':
                 option_name = _T("interval");
+                break;
+            case 'g':
+                option_name = _T("goplen");
                 break;
             case '-':
                 option_name = &argv[i][2];
@@ -509,6 +555,8 @@ int _tmain(int argc, TCHAR **argv) {
                     option_error(option_name, argv[i]);
                     break;
                 }
+            } else if (0 == _tcscmp(option_name, _T("goplen"))) {
+                check_goplen = true;
             } else if (0 == _tcscmp(option_name, _T("help"))) {
                 print_help();
                 return 0;
@@ -518,7 +566,7 @@ int _tmain(int argc, TCHAR **argv) {
         }
     }
     for (auto filename : filelist) {
-        run(filename, interval);
+        run(filename, interval, check_goplen);
     }
     return 0;
 }
