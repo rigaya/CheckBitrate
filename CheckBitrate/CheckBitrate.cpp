@@ -491,6 +491,9 @@ int _tmain(int argc, TCHAR **argv) {
             case 'i':
                 option_name = _T("interval");
                 break;
+            case '-':
+                option_name = &argv[i][2];
+                break;
             default:
                 break;
             }
