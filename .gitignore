@@ -6,7 +6,6 @@
 *.user
 *.userosscache
 *.sln.docstates
-ffmpeg_lgpl/
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs

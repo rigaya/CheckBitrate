@@ -36,7 +36,7 @@
 #include <string>
 #include <tchar.h>
 #include "CheckBitrateVersion.h"
-#include "util.h" 
+#include "util.h"
 #include "avcodec_reader.h"
 
 #ifdef UNICODE
@@ -193,10 +193,10 @@ int GetHeader(StreamHandler& streamHandler) {
     if (streamHandler.pExtradata == nullptr) {
         streamHandler.nExtradataSize = streamHandler.pCodecCtx->extradata_size;
         //ここでav_mallocを使用しないと正常に動作しない
-        streamHandler.pExtradata = (uint8_t *)av_malloc(streamHandler.pCodecCtx->extradata_size + FF_INPUT_BUFFER_PADDING_SIZE);
+        streamHandler.pExtradata = (uint8_t *)av_malloc(streamHandler.pCodecCtx->extradata_size + AV_INPUT_BUFFER_PADDING_SIZE);
         //ヘッダのデータをコピーしておく
         memcpy(streamHandler.pExtradata, streamHandler.pCodecCtx->extradata, streamHandler.nExtradataSize);
-        memset(streamHandler.pExtradata + streamHandler.nExtradataSize, 0, FF_INPUT_BUFFER_PADDING_SIZE);
+        memset(streamHandler.pExtradata + streamHandler.nExtradataSize, 0, AV_INPUT_BUFFER_PADDING_SIZE);
 
         if (streamHandler.bUseHEVCmp42AnnexB) {
             hevcMp42Annexb(nullptr, streamHandler);

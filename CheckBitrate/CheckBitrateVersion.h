@@ -28,9 +28,9 @@
 #ifndef __CHECK_BITRATE_VERSION_H__
 #define __CHECK_BITRATE_VERSION_H__
 
-#define VER_FILEVERSION             0,0,1,0
-#define VER_STR_FILEVERSION          "0.01"
-#define VER_STR_FILEVERSION_TCHAR _T("0.01")
+#define VER_FILEVERSION             0,0,2,0
+#define VER_STR_FILEVERSION          "0.02"
+#define VER_STR_FILEVERSION_TCHAR _T("0.02")
 
 #ifdef DEBUG
 #define VER_DEBUG   VS_FF_DEBUG
