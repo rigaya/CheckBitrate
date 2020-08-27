@@ -116,7 +116,8 @@
     <PostBuildEvent>
       <Command>copy /y "$(SolutionDir)ffmpeg_lgpl\lib\$(PlatformName)\avcodec-*.dll"  "$(OutDir)" &gt; NUL
 copy /y "$(SolutionDir)ffmpeg_lgpl\lib\$(PlatformName)\avformat-*.dll" "$(OutDir)" &gt; NUL
-copy /y "$(SolutionDir)ffmpeg_lgpl\lib\$(PlatformName)\avutil-*.dll" "$(OutDir)" &gt; NUL</Command>
+copy /y "$(SolutionDir)ffmpeg_lgpl\lib\$(PlatformName)\avutil-*.dll" "$(OutDir)" &gt; NUL
+copy /y "$(SolutionDir)ffmpeg_lgpl\lib\$(PlatformName)\swresample-*.dll" "$(OutDir)" &gt; NUL</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -150,7 +151,8 @@ copy /y "$(SolutionDir)ffmpeg_lgpl\lib\$(PlatformName)\avutil-*.dll" "$(OutDir)"
     <PostBuildEvent>
       <Command>copy /y "$(SolutionDir)ffmpeg_lgpl\lib\$(PlatformName)\avcodec-*.dll"  "$(OutDir)" &gt; NUL
 copy /y "$(SolutionDir)ffmpeg_lgpl\lib\$(PlatformName)\avformat-*.dll" "$(OutDir)" &gt; NUL
-copy /y "$(SolutionDir)ffmpeg_lgpl\lib\$(PlatformName)\avutil-*.dll" "$(OutDir)" &gt; NUL</Command>
+copy /y "$(SolutionDir)ffmpeg_lgpl\lib\$(PlatformName)\avutil-*.dll" "$(OutDir)" &gt; NUL
+copy /y "$(SolutionDir)ffmpeg_lgpl\lib\$(PlatformName)\swresample-*.dll" "$(OutDir)" &gt; NUL</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -190,7 +192,8 @@ copy /y "$(SolutionDir)ffmpeg_lgpl\lib\$(PlatformName)\avutil-*.dll" "$(OutDir)"
     <PostBuildEvent>
       <Command>copy /y "$(SolutionDir)ffmpeg_lgpl\lib\$(PlatformName)\avcodec-*.dll"  "$(OutDir)" &gt; NUL
 copy /y "$(SolutionDir)ffmpeg_lgpl\lib\$(PlatformName)\avformat-*.dll" "$(OutDir)" &gt; NUL
-copy /y "$(SolutionDir)ffmpeg_lgpl\lib\$(PlatformName)\avutil-*.dll" "$(OutDir)" &gt; NUL</Command>
+copy /y "$(SolutionDir)ffmpeg_lgpl\lib\$(PlatformName)\avutil-*.dll" "$(OutDir)" &gt; NUL
+copy /y "$(SolutionDir)ffmpeg_lgpl\lib\$(PlatformName)\swresample-*.dll" "$(OutDir)" &gt; NUL</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -232,7 +235,8 @@ copy /y "$(SolutionDir)ffmpeg_lgpl\lib\$(PlatformName)\avutil-*.dll" "$(OutDir)"
     <PostBuildEvent>
       <Command>copy /y "$(SolutionDir)ffmpeg_lgpl\lib\$(PlatformName)\avcodec-*.dll"  "$(OutDir)" &gt; NUL
 copy /y "$(SolutionDir)ffmpeg_lgpl\lib\$(PlatformName)\avformat-*.dll" "$(OutDir)" &gt; NUL
-copy /y "$(SolutionDir)ffmpeg_lgpl\lib\$(PlatformName)\avutil-*.dll" "$(OutDir)" &gt; NUL</Command>
+copy /y "$(SolutionDir)ffmpeg_lgpl\lib\$(PlatformName)\avutil-*.dll" "$(OutDir)" &gt; NUL
+copy /y "$(SolutionDir)ffmpeg_lgpl\lib\$(PlatformName)\swresample-*.dll" "$(OutDir)" &gt; NUL</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
