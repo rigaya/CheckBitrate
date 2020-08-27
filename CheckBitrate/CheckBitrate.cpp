@@ -27,6 +27,7 @@
 
 #include <cstdio>
 #include <cstdint>
+#include <cmath>
 #include <algorithm>
 #include <numeric>
 #include <memory>
