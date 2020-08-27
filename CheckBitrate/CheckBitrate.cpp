@@ -445,7 +445,9 @@ int run(const tstring& filename, double interval = 0.0, bool check_goplen = fals
             }
         }
         ist->second.pParserCtx = av_parser_init(pCodecCtx->codec_id);
-        ist->second.pParserCtx->flags |= PARSER_FLAG_COMPLETE_FRAMES;
+        if (ist->second.pParserCtx) {
+            ist->second.pParserCtx->flags |= PARSER_FLAG_COMPLETE_FRAMES;
+        }
 
         GetHeader(ist->second);
     }
