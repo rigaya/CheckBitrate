@@ -1,0 +1,68 @@
+# QSVEnc
+# continuous integration settings
+
+image: Visual Studio 2019
+
+platform:
+ - Win32
+ - x64
+
+configuration:
+ - Release
+
+branches:
+  only:
+    - master
+    - appveyor
+
+init:
+  - ps: Set-WinSystemLocale ja-JP
+  - ps: Start-Sleep -s 15
+  - ps: Restart-Computer
+  - ps: Start-Sleep -s 15
+  - git config --global core.autocrlf input
+
+install:
+  - git submodule update --init --recursive
+
+before_build:
+  - ps: |
+      $version = $null
+      if (Test-Path Env:APPVEYOR_REPO_TAG_NAME)
+      {
+          $version = (Get-Item Env:APPVEYOR_REPO_TAG_NAME).Value
+      }
+      
+      if ([string]::IsNullOrEmpty($version))
+      {
+          $version = $env:APPVEYOR_BUILD_VERSION + '_Alpha'
+      }
+      $env:BUILD_VERSION=$version
+
+  - echo %BUILD_VERSION%
+  - appveyor UpdateBuild -Version "%BUILD_VERSION%"
+
+build:
+  parallel: true
+  project: CheckBitrate.sln
+
+after_build:
+  - mkdir CheckBitrate_Release
+  - copy %PLATFORM%\%CONFIGURATION%\QSVEncC*.exe CheckBitrate_Release
+  - copy %PLATFORM%\%CONFIGURATION%\*.dll CheckBitrate_Release
+  - 7z a -mx9 CheckBitrate_%BUILD_VERSION%_%PLATFORM%.7z .\CheckBitrate_Release\*
+
+artifacts:
+  - path: CheckBitrate_%BUILD_VERSION%_%PLATFORM%.7z
+    name: CheckBitrate_%BUILD_VERSION%_%PLATFORM%
+
+deploy:
+  provider: GitHub
+  auth_token:
+    secure: IDRwZWN1uQaTxb64SQnTDNJR5KPtCFPL3Mln9GrdZ7TSiyec/o1KXpOuh/50ZO5A
+  artifact: CheckBitrate_%BUILD_VERSION%_%PLATFORM%
+  draft: false
+  prerelease: false
+  on:
+    branch: master
+    appveyor_repo_tag: true
