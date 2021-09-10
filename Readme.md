@@ -1,29 +1,32 @@
 
 # CheckBitrate
-動画ファイルを分析して、ビットレート分布をcsvで出力します。  
-csvをエクセルなりなんなりでグラフにしてみてください。
+Output bitrate distribution of video file(s) in csv format.
 
-## ダウンロード & 更新履歴
-[rigayaの日記兼メモ帳>>](http://rigaya34589.blog135.fc2.com/blog-category-21.html)
+**[日本語版はこちら＞＞](./Readme.ja.md)**  
 
-## 動作環境
-Windows 10 (x86/x64)
+## Download
+[github releases>>](https://github.com/rigaya/CheckBitrate/releases)
+
+## System Requirements  
+Windows 10 (x86/x64)  
 Linux
 
-## 使用方法
+## Usage
 ```bat
-CheckBitrate.exe　[オプション] <動画ファイル1> [<動画ファイル2>]...
+CheckBitrate.exe　[Options] <Video File 1> [<Video File 2>]...
 ```
-チェックしたい動画ファイルをドラッグ&ドロップしてください。
-&lt;動画ファイル&gt;.trackID.bitrate.csvに解析結果が出力されます。
+The bitrate distribution will be written in &lt;Video File Name&gt;.trackID.bitrate.csv.
 
-### オプション
+### Options
 
 _-i &lt;float&gt;_  
-ビットレートの分布のおおよその分解能を秒単位で指定。フレームレートとの兼ね合いできっちり指定した値で分析されるわけではありません。  
-デフォルトでは0.5～4.0秒の間で適当に決まります。
+Set bitrate distribution resolution in seconds. Due to frame rate, the might be a case that the value is exactly applied.  
 
+The default value is automatically set between 0.5 - 4.0 seconds, depending on the duration of the file.
 
-### CheckBitrate 使用にあたっての注意事項
-無保証です。自己責任で使用してください。  
-CheckBitrateを使用したことによる、いかなる損害・トラブルについても責任を負いません。
+## Example of the output file
+[output example (csv)](./example/example.csv)  
+![graph from csv](./example/example.png "example")
+
+## Precautions for using CheckBitrate  
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
