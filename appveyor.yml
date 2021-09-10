@@ -48,7 +48,7 @@ build:
 
 after_build:
   - mkdir CheckBitrate_Release
-  - copy %PLATFORM%\%CONFIGURATION%\QSVEncC*.exe CheckBitrate_Release
+  - copy %PLATFORM%\%CONFIGURATION%\CheckBitrate.exe CheckBitrate_Release
   - copy %PLATFORM%\%CONFIGURATION%\*.dll CheckBitrate_Release
   - 7z a -mx9 CheckBitrate_%BUILD_VERSION%_%PLATFORM%.7z .\CheckBitrate_Release\*
 
