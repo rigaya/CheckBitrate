@@ -1,9 +1,9 @@
 ﻿// -----------------------------------------------------------------------------------------
-// CheckBitrate by rigaya
+// QSVEnc/NVEnc by rigaya
 // -----------------------------------------------------------------------------------------
 // The MIT License
 //
-// Copyright (c) 2016 rigaya
+// Copyright (c) 2011-2016 rigaya
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -23,37 +23,16 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 //
-// --------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------
 
-#ifndef __CHECK_BITRATE_VERSION_H__
-#define __CHECK_BITRATE_VERSION_H__
-
-#define VER_FILEVERSION             0,0,3,0
-#define VER_STR_FILEVERSION          "0.03"
-#define VER_STR_FILEVERSION_TCHAR _T("0.03")
-
-#ifdef DEBUG
-#define VER_DEBUG   VS_FF_DEBUG
-#define VER_PRIVATE VS_FF_PRIVATEBUILD
-#else
-#define VER_DEBUG   0
-#define VER_PRIVATE 0
-#endif
+#pragma once
+#ifndef __RGY_CONFIG_H__
+#define __RGY_CONFIG_H__
 
 #ifdef _M_IX86
-#define CHECK_BITRATE_FILENAME "CheckBitrate (x86)"
+#define BUILD_ARCH_STR _T("x86")
 #else
-#define CHECK_BITRATE_FILENAME "CheckBitrate (x64)"
+#define BUILD_ARCH_STR _T("x64")
 #endif
 
-#define VER_STR_COMMENTS         "CheckBitrate"
-#define VER_STR_COMPANYNAME      ""
-#define VER_STR_FILEDESCRIPTION  CHECK_BITRATE_FILENAME
-#define VER_STR_INTERNALNAME     CHECK_BITRATE_FILENAME
-#define VER_STR_ORIGINALFILENAME "CheckBitrate.exe"
-#define VER_STR_LEGALCOPYRIGHT   "CheckBitrate by rigaya"
-#define VER_STR_PRODUCTNAME      CHECK_BITRATE_FILENAME
-#define VER_PRODUCTVERSION       VER_FILEVERSION
-#define VER_STR_PRODUCTVERSION   VER_STR_FILEVERSION
-
-#endif //__CHECK_BITRATE_VERSION_H__
+#endif //__RGY_CONFIG_H__

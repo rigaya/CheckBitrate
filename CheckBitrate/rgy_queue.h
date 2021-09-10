@@ -1,5 +1,5 @@
 ﻿// -----------------------------------------------------------------------------------------
-// QSVEnc by rigaya
+// QSVEnc/NVEnc by rigaya
 // -----------------------------------------------------------------------------------------
 // The MIT License
 //
@@ -25,28 +25,25 @@
 //
 // --------------------------------------------------------------------------------------------
 
-#ifndef _QSV_QUEUE_H_
-#define _QSV_QUEUE_H_
+#pragma once
+#ifndef __RGY_QUEUE_H__
+#define __RGY_QUEUE_H__
 
-#define WIN32_LEAN_AND_MEAN
-#define NOMINMAX
-#include <Windows.h>
 #include <cstdint>
 #include <cstring>
 #include <atomic>
 #include <climits>
 #include <memory>
+#include "rgy_arch.h"
+#include "rgy_osdep.h"
+#include "rgy_event.h"
 
 #ifndef clamp
 #define clamp(x, low, high) (((x) <= (high)) ? (((x) >= (low)) ? (x) : (low)) : (high))
 #endif
 
-#ifndef CloseEvent
-#define CloseEvent CloseHandle
-#endif
-
 template<typename Type, size_t align_byte = sizeof(Type)>
-class CQueueSPSP {
+class RGYQueueSPSP {
     union queueData {
         Type data;
         char pad[((sizeof(Type) + (align_byte-1)) & (~(align_byte-1)))];
@@ -55,7 +52,7 @@ public:
     //並列で1つの押し込みと1つの取り出しが可能なキューを作成する
     //スレッド並列対応のため、データにはパディングをつけてアライメントをとることが可能 (align_byte)
     //どこまで効果があるかは不明だが、align_byte=64としてfalse sharingを回避できる
-    CQueueSPSP() :
+    RGYQueueSPSP() :
         m_nPushRestartExtra(0),
         m_heEventPoped(NULL),
         m_heEventPushed(NULL),
@@ -63,7 +60,6 @@ public:
         m_nMaxCapacity(SIZE_MAX),
         m_nKeepLength(0),
         m_pBufStart(), m_pBufFin(nullptr), m_pBufIn(nullptr), m_pBufOut(nullptr), m_bUsingData(false) {
-        static_assert(std::is_pod<Type>::value == true, "CQueueSPSP is only for POD type.");
         //実際のメモリのアライメントに適切な2の倍数であるか確認する
         //そうでない場合は32をデフォルトとして使用
         for (uint32_t i = 4; i < sizeof(i) * 8; i++) {
@@ -74,7 +70,7 @@ public:
             }
         }
     }
-    ~CQueueSPSP() {
+    ~RGYQueueSPSP() {
         close();
     }
     //indexの位置への参照を返す
@@ -166,7 +162,14 @@ public:
             if (!newBuf) {
                 return false;
             }
-            memcpy(newBuf.get(), pBufOutOld, sizeof(queueData) * dataSize);
+            if (std::is_trivially_copyable<Type>::value) {
+                memcpy(newBuf.get(), pBufOutOld, sizeof(queueData) * dataSize);
+            } else {
+                queueData *pBufOutNew = newBuf.get();
+                for (size_t i = 0; i < dataSize; i++) {
+                    pBufOutNew[i].data = pBufOutOld[i].data;
+                }
+            }
             queueData *pBufOutNew = newBuf.get();
             queueData *pBufOutExpected = pBufOutOld;
             //更新前にnullptrをセット
@@ -184,14 +187,16 @@ public:
             //一度falseになったことが確認できれば、
             //その次の取り出しは新しいバッファから行われていることになるので、
             //古いバッファは破棄してよい
-            while (m_bUsingData.load()) {
-                _mm_pause();
+            int expected = 0;
+            while (!m_bUsingData.compare_exchange_weak(expected, 1)) {
+                rgy_yield();
+                expected = 0;
             }
             //古いバッファを破棄
             m_pBufStart = std::move(newBuf);
-            m_bUsingData = 0;
+            m_bUsingData--;
         }
-        memcpy(m_pBufIn.load(), &in, sizeof(Type));
+        m_pBufIn.load()->data = in;
         m_pBufIn++;
         SetEvent(m_heEventPushed);
         return true;
@@ -204,7 +209,7 @@ public:
         //押し込み処理で書き換え中なので待機する
         queueData *ptr = nullptr;
         while ((ptr = m_pBufIn.load()) == nullptr) {
-            _mm_pause();
+            rgy_yield();
         }
         return ptr - m_pBufOut;
     }
@@ -227,7 +232,8 @@ public:
         auto nSize = size();
         bool bCopy = index < nSize;
         if (bCopy) {
-            memcpy(out, m_pBufOut + index, sizeof(Type));
+            auto ptr = m_pBufOut + index;
+            *out = ptr->data;
         }
         m_bUsingData--;
         if (!bCopy) {
@@ -245,7 +251,7 @@ public:
         auto nSize = size();
         bool bCopy = nSize > m_nKeepLength;
         if (bCopy) {
-            memcpy(out, m_pBufOut.load(), sizeof(Type));
+            *out = m_pBufOut.load()->data;
         }
         m_bUsingData--;
         if (!bCopy) {
@@ -263,7 +269,8 @@ public:
         auto nSize = size();
         bool bCopy = nSize > m_nKeepLength;
         if (bCopy) {
-            memcpy(out, m_pBufOut++, sizeof(Type));
+            *out = m_pBufOut.load()->data;
+            m_pBufOut++;
             if (nSize <= m_nMaxCapacity - m_nPushRestartExtra) {
                 SetEvent(m_heEventPoped);
             }
@@ -328,4 +335,4 @@ protected:
     std::atomic<int> m_bUsingData; //キューから読み出し中のスレッドの数
 };
 
-#endif //_QSV_QUEUE_H_
+#endif //__RGY_QUEUE_H__

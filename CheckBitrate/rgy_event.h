@@ -1,9 +1,9 @@
 ﻿// -----------------------------------------------------------------------------------------
-// CheckBitrate by rigaya
+// QSVEnc by rigaya
 // -----------------------------------------------------------------------------------------
 // The MIT License
 //
-// Copyright (c) 2016 rigaya
+// Copyright (c) 2011-2016 rigaya
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -25,35 +25,38 @@
 //
 // --------------------------------------------------------------------------------------------
 
-#ifndef __CHECK_BITRATE_VERSION_H__
-#define __CHECK_BITRATE_VERSION_H__
+#pragma once
+#ifndef __RGY_EVENT_H__
+#define __RGY_EVENT_H__
 
-#define VER_FILEVERSION             0,0,3,0
-#define VER_STR_FILEVERSION          "0.03"
-#define VER_STR_FILEVERSION_TCHAR _T("0.03")
+#include <cstdint>
+#include <climits>
+#include "rgy_osdep.h"
 
-#ifdef DEBUG
-#define VER_DEBUG   VS_FF_DEBUG
-#define VER_PRIVATE VS_FF_PRIVATEBUILD
-#else
-#define VER_DEBUG   0
-#define VER_PRIVATE 0
-#endif
+#if defined(_WIN32) || defined(_WIN64)
+#define CloseEvent CloseHandle
+#else //#if defined(_WIN32) || defined(_WIN64)
 
-#ifdef _M_IX86
-#define CHECK_BITRATE_FILENAME "CheckBitrate (x86)"
-#else
-#define CHECK_BITRATE_FILENAME "CheckBitrate (x64)"
-#endif
+enum : uint32_t {
+    WAIT_OBJECT_0 = 0,
+    WAIT_TIMEOUT = 258L,
+    WAIT_ABANDONED_0 = 0x00000080L
+};
 
-#define VER_STR_COMMENTS         "CheckBitrate"
-#define VER_STR_COMPANYNAME      ""
-#define VER_STR_FILEDESCRIPTION  CHECK_BITRATE_FILENAME
-#define VER_STR_INTERNALNAME     CHECK_BITRATE_FILENAME
-#define VER_STR_ORIGINALFILENAME "CheckBitrate.exe"
-#define VER_STR_LEGALCOPYRIGHT   "CheckBitrate by rigaya"
-#define VER_STR_PRODUCTNAME      CHECK_BITRATE_FILENAME
-#define VER_PRODUCTVERSION       VER_FILEVERSION
-#define VER_STR_PRODUCTVERSION   VER_STR_FILEVERSION
+static const uint32_t INFINITE = UINT_MAX;
 
-#endif //__CHECK_BITRATE_VERSION_H__
+void ResetEvent(HANDLE ev);
+
+void SetEvent(HANDLE ev);
+
+HANDLE CreateEvent(void *pDummy, int bManualReset, int bInitialState, void *pDummy2);
+
+void CloseEvent(HANDLE ev);
+
+uint32_t WaitForSingleObject(HANDLE ev, uint32_t millisec);
+
+uint32_t WaitForMultipleObjects(uint32_t count, HANDLE *pev, int dummy, uint32_t millisec);
+
+#endif //#if defined(_WIN32) || defined(_WIN64)
+
+#endif //__RGY_EVENT_H__

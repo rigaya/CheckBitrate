@@ -35,9 +35,9 @@
 #include <chrono>
 #include <functional>
 #include <string>
-#include <tchar.h>
 #include "CheckBitrateVersion.h"
-#include "util.h"
+#include "rgy_util.h"
+#include "rgy_filesystem.h"
 #include "avcodec_reader.h"
 
 #ifdef UNICODE
@@ -45,8 +45,6 @@
 #else
 #define to_tstring to_string
 #endif
-
-using std::map;
 
 struct StreamHandler {
     AVCodecContext *pCodecCtx;
@@ -219,7 +217,7 @@ int GetHeader(StreamHandler& streamHandler) {
     return 0;
 }
 
-int check(AVFormatContext *pFormatCtx, map<int, StreamHandler>& streamHandlers, uint64_t filesize) {
+int check(AVFormatContext *pFormatCtx, std::map<int, StreamHandler>& streamHandlers, uint64_t filesize) {
     AVPacket pkt;
     av_init_packet(&pkt);
     auto tmupdate = std::chrono::system_clock::now();
@@ -423,7 +421,7 @@ int run(const tstring& filename, double interval = 0.0, bool check_goplen = fals
     }
     //auto nVideoIndex = selectStream(pFormatCtx, videoStreams, nVideoTrack, nStreamId);
 
-    map<int, StreamHandler> streamHandlers;
+    std::map<int, StreamHandler> streamHandlers;
     for (auto index : videoStreams) {
         StreamHandler stream;
         streamHandlers[index].pCodecCtx = pFormatCtx->streams[index]->codec;
@@ -453,7 +451,7 @@ int run(const tstring& filename, double interval = 0.0, bool check_goplen = fals
     }
 
     uint64_t filesize = 0;
-    qsv_get_filesize(filename.c_str(), &filesize);
+    rgy_get_filesize(filename.c_str(), &filesize);
 
     check(pFormatCtx, streamHandlers, filesize);
 

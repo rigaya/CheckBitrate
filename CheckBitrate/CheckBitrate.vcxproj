@@ -98,6 +98,7 @@
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <DisableSpecificWarnings>4505;4996</DisableSpecificWarnings>
       <MinimalRebuild>false</MinimalRebuild>
+      <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -131,6 +132,7 @@ copy /y "$(SolutionDir)ffmpeg_lgpl\lib\$(PlatformName)\swresample-*.dll" "$(OutD
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <DisableSpecificWarnings>4505;4996</DisableSpecificWarnings>
       <MinimalRebuild>false</MinimalRebuild>
+      <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -172,6 +174,7 @@ copy /y "$(SolutionDir)ffmpeg_lgpl\lib\$(PlatformName)\swresample-*.dll" "$(OutD
       <OmitFramePointers>true</OmitFramePointers>
       <EnableFiberSafeOptimizations>true</EnableFiberSafeOptimizations>
       <FloatingPointModel>Fast</FloatingPointModel>
+      <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -213,6 +216,7 @@ copy /y "$(SolutionDir)ffmpeg_lgpl\lib\$(PlatformName)\swresample-*.dll" "$(OutD
       <OmitFramePointers>true</OmitFramePointers>
       <EnableFiberSafeOptimizations>true</EnableFiberSafeOptimizations>
       <FloatingPointModel>Fast</FloatingPointModel>
+      <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -241,13 +245,23 @@ copy /y "$(SolutionDir)ffmpeg_lgpl\lib\$(PlatformName)\swresample-*.dll" "$(OutD
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="CheckBitrate.cpp" />
-    <ClCompile Include="util.cpp" />
+    <ClCompile Include="rgy_codepage.cpp" />
+    <ClCompile Include="rgy_event.cpp" />
+    <ClCompile Include="rgy_filesystem.cpp" />
+    <ClCompile Include="rgy_util.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="avcodec_reader.h" />
     <ClInclude Include="CheckBitrateVersion.h" />
-    <ClInclude Include="qsv_queue.h" />
-    <ClInclude Include="util.h" />
+    <ClInclude Include="rgy_arch.h" />
+    <ClInclude Include="rgy_codepage.h" />
+    <ClInclude Include="rgy_event.h" />
+    <ClInclude Include="rgy_filesystem.h" />
+    <ClInclude Include="rgy_osdep.h" />
+    <ClInclude Include="rgy_queue.h" />
+    <ClInclude Include="rgy_tchar.h" />
+    <ClInclude Include="rgy_util.h" />
+    <ClInclude Include="rgy_version.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="CheckBitrate.rc" />
