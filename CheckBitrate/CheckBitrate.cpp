@@ -377,7 +377,7 @@ static int writeGopLength(const tstring& filename, StreamHandler& streamHandler)
     const auto goplenAvg = std::accumulate(goplenList.begin(), goplenList.end(), 0, [](uint32_t a, uint32_t b) { return a + b; }) / (double)goplenList.size();
     _ftprintf(fp, _T("        avg: %.2f\n"), goplenAvg);
 
-    const auto goplenStd = std::sqrt(std::accumulate(goplenList.begin(), goplenList.end(), 0.0, [goplenAvg](double a, uint32_t b) { return a + (goplenAvg - b) * (goplenAvg - b); }) / (double)std::max<int>(1, goplenList.size() - 1));
+    const auto goplenStd = std::sqrt(std::accumulate(goplenList.begin(), goplenList.end(), 0.0, [goplenAvg](double a, uint32_t b) { return a + (goplenAvg - b) * (goplenAvg - b); }) / (double)std::max<int>(1, (int)goplenList.size() - 1));
     _ftprintf(fp, _T("        std: %.2f\n"), goplenStd);
     fclose(fp);
     return 0;
