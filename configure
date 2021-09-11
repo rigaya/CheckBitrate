@@ -97,7 +97,7 @@ X86_64=1
 NO_RDTSCP_INTRIN=0
 ENABLE_AVSW_READER=1
 
-CHECK_LIBAV_NAMES="libswresample libavutil libavcodec libavformat libavfilter"
+CHECK_LIBAV_NAMES="libswresample libavutil libavcodec libavformat"
 LIBAV_CFLAGS=""
 LIBAV_LIBS=""
 ENABLE_AVSW_READER=1
@@ -341,13 +341,6 @@ if [ $ENABLE_AVSW_READER -ne 0 ]; then
         cnf_write "yes"
     fi
     
-    if ! cxx_check "libavfilter" "${CXXFLAGS} ${EXTRACXXFLAGS} ${LIBAV_CFLAGS} ${LDFLAGS} ${EXTRALDFLAGS} ${LIBAV_LIBS}" "" "libavfilter/avfilter.h" "avfilter_register_all();" ; then
-        cnf_write "no"
-        ENABLE_AVSW_READER=0
-    else
-        cnf_write "yes"
-    fi
-    
     if ! cxx_check "libswresample" "${CXXFLAGS} ${EXTRACXXFLAGS} ${LIBAV_CFLAGS} ${LDFLAGS} ${EXTRALDFLAGS} ${LIBAV_LIBS}" "" "libswresample/swresample.h" "swr_alloc();" ; then
         cnf_write "no"
         ENABLE_AVSW_READER=0
@@ -355,7 +348,7 @@ if [ $ENABLE_AVSW_READER -ne 0 ]; then
         cnf_write "yes"
     fi
     if [ $ENABLE_AVSW_READER -eq 0 ]; then
-        cnf_write "libavutil, libavcodec, libavformat, libavfilter, libswresample are required to build checkbitrate."
+        cnf_write "libavutil, libavcodec, libavformat, libswresample are required to build checkbitrate."
         exit 1
     fi
 fi
