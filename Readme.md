@@ -20,7 +20,7 @@ The bitrate distribution will be written in &lt;Video File Name&gt;.trackID.bitr
 ### Options
 
 _-i &lt;float&gt;_  
-Set bitrate distribution resolution in seconds. Due to frame rate, the might be a case that the value is exactly applied.  
+Set bitrate distribution resolution in seconds. Due to frame rate, there might be a case that the value is not exactly applied.  
 
 The default value is automatically set between 0.5 - 4.0 seconds, depending on the duration of the file.
 
