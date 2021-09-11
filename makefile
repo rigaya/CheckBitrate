@@ -22,7 +22,7 @@ include .depend
 endif
 
 clean:
-	rm -f $(OBJS) $(PROGRAM) .depend
+	rm -f $(OBJS) $(PROGRAM) .depend config.mak
 
 distclean: clean
 	rm -f config.mak
