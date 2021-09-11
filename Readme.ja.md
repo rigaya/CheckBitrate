@@ -25,6 +25,8 @@ _-i &lt;float&gt;_
 
 ## 出力ファイル例
 [出力ファイル例 (csv)](./example/example.csv)  
+
+Excel等でグラフにするとこんな感じになります。
 ![example](./example/example.png "example")
 
 

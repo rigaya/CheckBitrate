@@ -26,6 +26,8 @@ The default value is automatically set between 0.5 - 4.0 seconds, depending on t
 
 ## Example of the output file
 [output example (csv)](./example/example.csv)  
+
+Graph made by excel from the csv is below.  
 ![graph from csv](./example/example.png "example")
 
 ## Precautions for using CheckBitrate  
