@@ -4,7 +4,7 @@
 csvをエクセルなりなんなりでグラフにしてみてください。
 
 ## ダウンロード & 更新履歴
-[github releases>>](http://rigaya34589.blog135.fc2.com/blog-category-21.html)
+[github releases>>](https://github.com/rigaya/CheckBitrate/releases)
 
 ## 動作環境
 Windows 10 (x86/x64)  
