@@ -8,6 +8,9 @@ checkbitrate
 *.userosscache
 *.sln.docstates
 .depend
+.debpkg
+*.deb
+*.rpm
 config.mak
 
 # User-specific files (MonoDevelop/Xamarin Studio)
