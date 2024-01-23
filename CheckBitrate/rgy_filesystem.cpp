@@ -28,22 +28,57 @@
 #include <filesystem>
 #include <cstdint>
 #include "rgy_util.h"
+#include "rgy_env.h"
 #include "rgy_codepage.h"
 #include "rgy_filesystem.h"
 
-std::string GetFullPath(const char *path) {
-    return std::filesystem::absolute(std::filesystem::path(strlen(path) ? path : ".")).lexically_normal().string();
+std::string GetFullPathFrom(const char *path, const char *baseDir) {
+    if (auto p = std::filesystem::path(path); p.is_absolute()) {
+        return path;
+    }
+    path = (path && strlen(path)) ? path : ".";
+    const auto p = (baseDir) ? std::filesystem::path(baseDir).append(path) : std::filesystem::absolute(std::filesystem::path(path));
+    return p.lexically_normal().string();
+}
+std::string GetRelativePathFrom(const char *path, const char *baseDir) {
+    if (path == nullptr || strlen(path) == 0) {
+        return ".";
+    }
+    const auto p = std::filesystem::path(path);
+    if (p.is_relative()) {
+        return path;
+    }
+    const auto basePath = (baseDir) ? std::filesystem::path(baseDir) : std::filesystem::current_path();
+    std::error_code ec;
+    return std::filesystem::proximate(p, basePath, ec).string();
 }
 #if defined(_WIN32) || defined(_WIN64)
-std::wstring GetFullPath(const wchar_t *path) {
-    return std::filesystem::absolute(std::filesystem::path(wcslen(path) ? path : L".")).lexically_normal().wstring();
+std::wstring GetFullPathFrom(const wchar_t *path, const wchar_t *baseDir) {
+    if (auto p = std::filesystem::path(path); p.is_absolute()) {
+        return path;
+    }
+    path = (path && wcslen(path)) ? path : L".";
+    const auto p = (baseDir) ? std::filesystem::path(baseDir).append(path) : std::filesystem::absolute(std::filesystem::path(path));
+    return p.lexically_normal().wstring();
+}
+std::wstring GetRelativePathFrom(const wchar_t *path, const wchar_t *baseDir) {
+    if (path == nullptr || wcslen(path) == 0) {
+        return L".";
+    }
+    const auto p = std::filesystem::path(path);
+    if (p.is_relative()) {
+        return path;
+    }
+    const auto basePath = (baseDir) ? std::filesystem::path(baseDir) : std::filesystem::current_path();
+    std::error_code ec;
+    return std::filesystem::proximate(p, basePath, ec).wstring();
 }
 //ルートディレクトリを取得
 std::string PathGetRoot(const char *path) {
-    return std::filesystem::path(GetFullPath(path)).root_name().string();
+    return std::filesystem::path(GetFullPathFrom(path)).root_name().string();
 }
 std::wstring PathGetRoot(const wchar_t *path) {
-    return std::filesystem::path(GetFullPath(path)).root_name().wstring();
+    return std::filesystem::path(GetFullPathFrom(path)).root_name().wstring();
 }
 
 //パスのルートが存在するかどうか
@@ -104,6 +139,16 @@ bool CreateDirectoryRecursive(const wchar_t *dir) {
 }
 #endif //#if defined(_WIN32) || defined(_WIN64)
 
+
+std::string PathGetFilename(const std::string& path) {
+    return std::filesystem::path(path).filename().string();
+}
+#if defined(_WIN32) || defined(_WIN64)
+std::wstring PathGetFilename(const std::wstring& path) {
+    return std::filesystem::path(path).filename().wstring();
+}
+#endif //#if defined(_WIN32) || defined(_WIN64)
+
 bool check_ext(const TCHAR *filename, const std::vector<const char*>& ext_list) {
     const auto target = tolowercase(std::filesystem::path(filename).extension().string());
     if (target.length() > 0) {
@@ -122,6 +167,13 @@ bool check_ext(const tstring& filename, const std::vector<const char*>& ext_list
 
 bool _tcheck_ext(const TCHAR *filename, const TCHAR *ext) {
     return tolowercase(std::filesystem::path(filename).extension().string()) == tolowercase(tchar_to_string(ext));
+}
+
+std::string rgy_get_extension(const std::string& filename) {
+    return std::filesystem::path(filename).extension().string();
+}
+std::wstring rgy_get_extension(const std::wstring& filename) {
+    return std::filesystem::path(filename).extension().wstring();
 }
 
 bool rgy_file_exists(const std::string& filepath) {
@@ -151,6 +203,22 @@ bool rgy_get_filesize(const char *filepath, uint64_t *filesize) {
 #endif //#if defined(_WIN32) || defined(_WIN64)
 }
 
+std::vector<tstring> get_file_list_with_filter(const tstring& dir, const tstring& filter_filename) {
+#if UNICODE
+#define pathstring wstring
+#else
+#define pathstring string
+#endif
+    std::vector<tstring> list;
+    for (const auto& x : std::filesystem::recursive_directory_iterator(dir)) {
+        if (filter_filename.length() == 0 || x.path().filename().pathstring().find(filter_filename) != std::string::npos) {
+            list.push_back(x.path().pathstring());
+        }
+    }
+#undef pathstring
+    return list;
+}
+
 #if defined(_WIN32) || defined(_WIN64)
 bool rgy_get_filesize(const wchar_t *filepath, uint64_t *filesize) {
     WIN32_FILE_ATTRIBUTE_DATA fd = { 0 };
@@ -162,7 +230,7 @@ bool rgy_get_filesize(const wchar_t *filepath, uint64_t *filesize) {
 std::vector<tstring> get_file_list(const tstring& pattern, const tstring& dir) {
     std::vector<tstring> list;
 
-    auto buf = wstring_to_tstring(std::filesystem::path(GetFullPath(dir.c_str())).append(pattern).wstring());
+    auto buf = wstring_to_tstring(std::filesystem::path(GetFullPathFrom(dir.c_str())).append(pattern).wstring());
 
     WIN32_FIND_DATA win32fd;
     HANDLE hFind = FindFirstFile(buf.c_str(), &win32fd); // FindFirstFileW No MAX_PATH Limitation
@@ -175,10 +243,10 @@ std::vector<tstring> get_file_list(const tstring& pattern, const tstring& dir) {
         if ((win32fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
             && _tcscmp(win32fd.cFileName, _T("..")) != 0
             && _tcscmp(win32fd.cFileName, _T(".")) != 0) {
-            const auto buf2 = wstring_to_tstring(std::filesystem::path(GetFullPath(dir.c_str())).append(win32fd.cFileName).wstring());
+            const auto buf2 = wstring_to_tstring(std::filesystem::path(GetFullPathFrom(dir.c_str())).append(win32fd.cFileName).wstring());
             vector_cat(list, get_file_list(pattern, buf2));
         } else {
-            buf = wstring_to_tstring(std::filesystem::path(GetFullPath(dir.c_str())).append(win32fd.cFileName).wstring());
+            buf = wstring_to_tstring(std::filesystem::path(GetFullPathFrom(dir.c_str())).append(win32fd.cFileName).wstring());
             list.push_back(buf);
         }
     } while (FindNextFile(hFind, &win32fd));
@@ -203,6 +271,13 @@ tstring getExePath() {
     return exePath;
 }
 
+tstring getModulePath(void *module) {
+    TCHAR dllPath[16384];
+    memset(dllPath, 0, sizeof(dllPath));
+    GetModuleFileName((HMODULE)module, dllPath, _countof(dllPath));
+    return dllPath;
+}
+
 #else
 tstring getExePath() {
     char prg_path[16384];
@@ -219,12 +294,45 @@ tstring getExeDir() {
 }
 
 bool rgy_path_is_same(const TCHAR *path1, const TCHAR *path2) {
-    const auto p1 = std::filesystem::path(path1);
-    const auto p2 = std::filesystem::path(path2);
-    std::error_code ec;
-    return std::filesystem::equivalent(p1, p2, ec);
+    try {
+        const auto p1 = std::filesystem::path(path1);
+        const auto p2 = std::filesystem::path(path2);
+        std::error_code ec;
+        return std::filesystem::equivalent(p1, p2, ec);
+    } catch (...) {
+        return false;
+    }
 }
 
 bool rgy_path_is_same(const tstring& path1, const tstring& path2) {
     return rgy_path_is_same(path1.c_str(), path2.c_str());
 }
+
+#if defined(_WIN32) || defined(_WIN64)
+std::vector<std::basic_string<TCHAR>> createProcessOpenedFileList(const std::vector<size_t>& list_pid) {
+    const auto list_handle = createProcessHandleList(list_pid, L"File");
+    std::vector<std::basic_string<TCHAR>> list_file;
+    std::vector<TCHAR> filename(32768+1, 0);
+    for (const auto& handle : list_handle) {
+        const auto fileType = GetFileType(handle.get());
+        if (fileType == FILE_TYPE_DISK) { //ハンドルがパイプだとGetFinalPathNameByHandleがフリーズするため使用不可
+            memset(filename.data(), 0, sizeof(filename[0]) * filename.size());
+            auto ret = GetFinalPathNameByHandle(handle.get(), filename.data(), (DWORD)filename.size(), FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
+            if (ret != 0) {
+                try {
+                    auto f = std::filesystem::canonical(filename.data());
+                    if (std::filesystem::is_regular_file(f)) {
+                        list_file.push_back(f.string<TCHAR>());
+                    }
+                } catch (...) {}
+            }
+        }
+    }
+    // 重複を排除
+    std::sort(list_file.begin(), list_file.end());
+    auto result = std::unique(list_file.begin(), list_file.end());
+    // 不要になった要素を削除
+    list_file.erase(result, list_file.end());
+    return list_file;
+}
+#endif //#if defined(_WIN32) || defined(_WIN64)

@@ -91,6 +91,17 @@ using std::shared_ptr;
 #define ALIGN16(x) (((x)+15)&(~15))
 #define ALIGN32(x) (((x)+31)&(~31))
 
+template<typename T>
+static bool rgy_is_pow2(T i) {
+    static_assert(std::is_integral<T>::value, "rgy_is_pow2 is defined only for integer.");
+    return (i & (i - 1)) != 0;
+}
+template<typename T>
+static T rgy_ceil_int(T i, T div) {
+    static_assert(std::is_integral<T>::value, "rgy_ceil_int is defined only for integer.");
+    return ((i + div - 1) / div) * div;
+}
+
 #define MAP_PAIR_0_1_PROTO(prefix, name0, type0, name1, type1) \
     type1 prefix ## _ ## name0 ## _to_ ## name1(type0 var0); \
     type0 prefix ## _ ## name1 ## _to_ ## name0(type1 var1);
@@ -165,6 +176,12 @@ void vector_cat(std::vector<T>& v1, const T *ptr, size_t nCount) {
     }
 }
 template<typename T>
+void vector_move(vector<T>& v1, vector<T> v2) {
+    if (v2.size()) {
+        v1.insert(v1.end(), std::make_move_iterator(v2.begin()), std::make_move_iterator(v2.end()));
+    }
+}
+template<typename T>
 static void rgy_free(T& ptr) {
     static_assert(std::is_pointer<T>::value == true, "T should be pointer");
     if (ptr) {
@@ -172,6 +189,31 @@ static void rgy_free(T& ptr) {
         ptr = nullptr;
     }
 }
+
+// -------------------------------------------------------
+// RGYArgN<関数引数のインデックス, decltype(関数名)>::type で関数引数の型がとれる
+template <std::size_t N, typename T0, typename ... Ts>
+struct RGYTypeN
+ { using type = typename RGYTypeN<N-1U, Ts...>::type; };
+
+template <typename T0, typename ... Ts>
+struct RGYTypeN<0U, T0, Ts...>
+ { using type = T0; };
+
+template <std::size_t, typename>
+struct RGYArgN;
+
+template <std::size_t N, typename R, typename ... As>
+struct RGYArgN<N, R(As...)>
+ { using type = typename RGYTypeN<N, As...>::type; };
+
+template <typename>
+struct RGYReturnType;
+
+template <typename R, typename ... As>
+struct RGYReturnType<R(As...)>
+ { using type = R; };
+// -------------------------------------------------------
 
 #pragma warning(push)
 #pragma warning(disable: 4127)
@@ -221,13 +263,17 @@ using unique_ptr_custom = std::unique_ptr<T, std::function<void(T*)>>;
 
 struct aligned_malloc_deleter {
     void operator()(void* ptr) const {
-        _aligned_free(ptr);
+        if (ptr) {
+            _aligned_free(ptr);
+        }
     }
 };
 
 struct malloc_deleter {
     void operator()(void* ptr) const {
-        free(ptr);
+        if (ptr) {
+            free(ptr);
+        }
     }
 };
 
@@ -352,6 +398,13 @@ public:
         return tmp;
     }
 
+    T round() const {
+        if (den == 1) {
+            return num;
+        }
+        return (T)(qdouble() + 0.5);
+    }
+
     rgy_rational<T> operator+ () {
         return *this;
     }
@@ -440,25 +493,25 @@ public:
     }
 
     template<typename Arg>
-    rgy_rational<T> operator + (const Arg& a) {
+    rgy_rational<T> operator + (const Arg& a) const {
         rgy_rational<T> t(*this);
         t += a;
         return t;
     }
     template<typename Arg>
-    rgy_rational<T> operator - (const Arg& a) {
+    rgy_rational<T> operator - (const Arg& a) const {
         rgy_rational<T> t(*this);
         t -= a;
         return t;
     }
     template<typename Arg>
-    rgy_rational<T> operator * (const Arg& a) {
+    rgy_rational<T> operator * (const Arg& a) const {
         rgy_rational<T> t(*this);
         t *= a;
         return t;
     }
     template<typename Arg>
-    rgy_rational<T> operator / (const Arg& a) {
+    rgy_rational<T> operator / (const Arg& a) const {
         rgy_rational<T> t(*this);
         t /= a;
         return t;
@@ -585,6 +638,8 @@ std::string trim(const std::string& string, const char* trim = " \t\v\r\n");
 std::wstring lstrip(const std::wstring& string, const WCHAR* trim = L" \t\v\r\n");
 std::wstring rstrip(const std::wstring& string, const WCHAR* trim = L" \t\v\r\n");
 std::wstring trim(const std::wstring& string, const WCHAR* trim = L" \t\v\r\n");
+std::string add_indent(const std::string& str, const int indentLength);
+std::wstring add_indent(const std::wstring& str, const int indentLength);
 
 #if defined(_WIN32) || defined(_WIN64)
 std::vector<std::wstring> sep_cmd(const std::wstring &cmd);
@@ -647,64 +702,101 @@ static tstring fourccToStr(uint32_t nFourCC) {
 //確保できなかったら、サイズを小さくして再度確保を試みる (最終的にnMinSizeも確保できなかったら諦める)
 size_t malloc_degeneracy(void **ptr, size_t nSize, size_t nMinSize);
 
-class vec3 {
+template<typename T>
+class RGYVec3 {
 public:
-    vec3() : v() {
+    RGYVec3() : v() {
         for (int i = 0; i < 3; i++)
-            v[i] = 0.0;
+            v[i] = (T)0.0;
     }
-    vec3(const vec3 &m) { memcpy(&v[0], &m.v[0], sizeof(v)); }
-    vec3(double a0, double a1, double a2) {
+    RGYVec3(const RGYVec3 &m) { memcpy(&v[0], &m.v[0], sizeof(v)); }
+    RGYVec3(T a0, T a1, T a2) {
         v[0] = a0;
         v[1] = a1;
         v[2] = a2;
     }
-    vec3 &operator=(const vec3 &m) { memcpy(&v[0], &m.v[0], sizeof(v)); return *this; }
-    const vec3 &m() const {
+    RGYVec3 &operator=(const RGYVec3 &m) { memcpy(&v[0], &m.v[0], sizeof(v)); return *this; }
+    const RGYVec3 &m() const {
         return *this;
     }
-    double &operator()(int i) {
+    T &operator()(int i) {
         return v[i];
     }
-    const double &operator()(int i) const {
+    const T &operator()(int i) const {
         return v[i];
     }
-    vec3 &operator+= (const vec3 &a) {
+    RGYVec3 &operator+= (const RGYVec3 &a) {
         for (int i = 0; i < 3; i++)
             v[i] += a.v[i];
         return *this;
     }
-    vec3 &operator-= (const vec3 &a) {
+    RGYVec3 &operator-= (const RGYVec3 &a) {
         for (int i = 0; i < 3; i++)
             v[i] -= a.v[i];
         return *this;
     }
-    vec3 amdal(const vec3 &a) const {
-        return vec3(
+    RGYVec3 &operator*= (const T a) {
+        for (int i = 0; i < 3; i++)
+            v[i] *= a;
+        return *this;
+    }
+    RGYVec3 &operator/= (const T a) {
+        for (int i = 0; i < 3; i++)
+            v[i] /= a;
+        return *this;
+    }
+    RGYVec3 operator + (const RGYVec3 &a) const {
+        RGYVec3 t(*this);
+        t += a;
+        return t;
+    }
+    RGYVec3 operator - (const RGYVec3 &a) const {
+        RGYVec3 t(*this);
+        t -= a;
+        return t;
+    }
+    RGYVec3 operator * (const T a) const {
+        RGYVec3 t(*this);
+        t *= a;
+        return t;
+    }
+    RGYVec3 operator / (const T a) const {
+        RGYVec3 t(*this);
+        t /= a;
+        return t;
+    }
+    RGYVec3 amdal(const RGYVec3 &a) const {
+        return RGYVec3(
             v[0] * a.v[0],
             v[1] * a.v[1],
             v[2] * a.v[2]
         );
     }
-    double dot(const vec3 &a) const {
+    T dot(const RGYVec3 &a) const {
         return a.v[0] * v[0] + a.v[1] * v[1] + a.v[2] * v[2];
     }
-    vec3 cross(const vec3 &a) const {
-        return vec3(
+    RGYVec3 cross(const RGYVec3 &a) const {
+        return RGYVec3(
             v[1] * a.v[2] - v[2] * a.v[1],
             v[2] * a.v[0] - v[0] * a.v[2],
             v[0] * a.v[1] - v[1] * a.v[0]
         );
     }
-    bool operator== (const vec3 &r) const {
+    RGYVec3 inv() const {
+        return RGYVec3(1.0f / v[0], 1.0f / v[1], 1.0f / v[2]);
+    }
+    bool operator== (const RGYVec3 &r) const {
         return memcmp(&v[0], &r.v[0], sizeof(v)) == 0;
     }
-    bool operator!= (const vec3 &r) const {
+    bool operator!= (const RGYVec3 &r) const {
         return memcmp(&v[0], &r.v[0], sizeof(v)) != 0;
     }
 private:
-    double v[3];
+    T v[3];
 };
+
+using vec3 = RGYVec3<double>;
+using vec3f = RGYVec3<float>;
 
 class mat3x3 {
 public:
@@ -974,6 +1066,9 @@ private:
 public:
     RGYListRef() : m_objs(), m_refCounts() {};
     ~RGYListRef() {
+        clear();
+    }
+    void clear() {
         m_refCounts.clear();
         m_objs.clear();
     }

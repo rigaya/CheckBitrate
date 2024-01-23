@@ -51,6 +51,7 @@
 #include <Windows.h>
 #include <process.h>
 #include <io.h>
+#include <conio.h>
 #include <mmsystem.h>
 #pragma comment(lib, "winmm.lib")
 #include <shellapi.h>
@@ -58,10 +59,32 @@
 #define RGY_GET_PROC_ADDRESS GetProcAddress
 #define RGY_FREE_LIBRARY FreeLibrary
 
+static bool RGYThreadStillActive(HANDLE handle) {
+    DWORD exitCode = 0;
+    return GetExitCodeThread(handle, &exitCode) == STILL_ACTIVE;
+}
+
+static int getStdInKey() {
+    static HANDLE hStdInHandle = NULL;
+    static bool stdin_from_console = false;
+    if (hStdInHandle == NULL) {
+        hStdInHandle = GetStdHandle(STD_INPUT_HANDLE);
+        DWORD mode = 0;
+        stdin_from_console = GetConsoleMode(hStdInHandle, &mode) != 0;
+    }
+    if (stdin_from_console) {
+        if (_kbhit()) {
+            return _getch();
+        }
+    }
+    return 0;
+}
+
 #else //#if defined(_WIN32) || defined(_WIN64)
 #include <sys/stat.h>
 #include <sys/times.h>
 #include <sys/types.h>
+#include <sys/select.h>
 #include <unistd.h>
 #include <cstdarg>
 #include <cstdlib>
@@ -70,11 +93,14 @@
 #include <cstring>
 #include <cwchar>
 #include <pthread.h>
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
 #include <sched.h>
 #include <dlfcn.h>
 
 static inline void *_aligned_malloc(size_t size, size_t alignment) {
-    void *p;
+    void *p = nullptr;
     int ret = posix_memalign(&p, alignment, size);
     return (ret == 0) ? p : 0;
 }
@@ -126,6 +152,9 @@ static inline char *strcpy_s(char *dst, const char *src) {
 static inline char *strncpy_s(char *dst, size_t numberOfElements, const char *src, size_t count) {
     return strncpy(dst, src, count);
 }
+static inline char *strncpy_s(char *dst, const char *src, size_t count) {
+    return strncpy(dst, src, count);
+}
 static inline char *strcat_s(char *dst, size_t size, const char *src) {
     return strcat(dst, src);
 }
@@ -139,6 +168,8 @@ static inline int _vsprintf_s(char *buffer, size_t size, const char *format, va_
 #define _strnicmp strncasecmp
 #define stricmp strcasecmp
 #define _stricmp stricmp
+#define wcsicmp wcscasecmp
+#define _wcsicmp wcsicmp
 
 static short _InterlockedIncrement16(volatile short *pVariable) {
     return __sync_add_and_fetch((volatile short*)pVariable, 1);
@@ -200,11 +231,45 @@ static uint32_t GetCurrentProcessId() {
     return (uint32_t)pid;
 }
 
+static pid_t GetCurrentProcess() {
+    return getpid();
+}
+
 static pthread_t GetCurrentThread() {
     return pthread_self();
 }
 
-static void SetThreadAffinityMask(pthread_t thread, size_t mask) {
+static size_t SetProcessAffinityMask(pid_t process, size_t mask) {
+    cpu_set_t cpuset_org;
+    CPU_ZERO(&cpuset_org);
+    sched_getaffinity(process, sizeof(cpu_set_t), &cpuset_org);
+    size_t mask_org = 0x00;
+    for (uint32_t j = 0; j < sizeof(mask_org) * 8; j++) {
+        if (CPU_ISSET(j, &cpuset_org)) {
+            mask_org |= ((size_t)1u << j);
+        }
+    }
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    for (uint32_t j = 0; j < sizeof(mask) * 8; j++) {
+        if (mask & (1 << j)) {
+            CPU_SET(j, &cpuset);
+        }
+    }
+    sched_setaffinity(process, sizeof(cpu_set_t), &cpuset);
+    return mask_org;
+}
+
+static size_t SetThreadAffinityMask(pthread_t thread, size_t mask) {
+    cpu_set_t cpuset_org;
+    CPU_ZERO(&cpuset_org);
+    pthread_getaffinity_np(thread, sizeof(cpu_set_t), &cpuset_org);
+    size_t mask_org = 0x00;
+    for (uint32_t j = 0; j < sizeof(mask_org) * 8; j++) {
+        if (CPU_ISSET(j, &cpuset_org)) {
+            mask_org |= ((size_t)1u << j);
+        }
+    }
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
     for (uint32_t j = 0; j < sizeof(mask) * 8; j++) {
@@ -213,6 +278,11 @@ static void SetThreadAffinityMask(pthread_t thread, size_t mask) {
         }
     }
     pthread_setaffinity_np(thread, sizeof(cpu_set_t), &cpuset);
+    return mask_org;
+}
+
+static bool RGYThreadStillActive(pthread_t thread) {
+    return pthread_tryjoin_np(thread, nullptr) != 0;
 }
 
 enum {
@@ -228,6 +298,28 @@ static void SetThreadPriority(pthread_t thread, int priority) {
     return; //何もしない
 }
 
+static void SetPriorityClass(pid_t thread, int priority) {
+    return; //何もしない
+}
+
+static int getStdInKey() {
+#if 0 // stdinで読み込む場合と干渉してしまうので、無効化する
+    const int stdInFd = 0; // 0 = stdin
+    fd_set fdStdIn;
+    FD_ZERO(&fdStdIn);
+    FD_SET(stdInFd, &fdStdIn);
+
+    struct timeval timeout = { 0 };
+    if (select(stdInFd+1, &fdStdIn, NULL, NULL, &timeout) > 0) {
+        char key = 0;
+        if (read(0, &key, 1) == 1) {
+            return key;
+        }
+    }
+#endif
+    return 0;
+}
+
 #define _fread_nolock fread
 #define _fwrite_nolock fwrite
 #define _fgetc_nolock fgetc
@@ -235,5 +327,10 @@ static void SetThreadPriority(pthread_t thread, int priority) {
 #define _ftelli64 ftell
 
 #endif //#if defined(_WIN32) || defined(_WIN64)
+
+static bool stdInAbort() {
+    const auto key = getStdInKey();
+    return (key == 'q' || key == 'Q');
+}
 
 #endif //__RGY_OSDEP_H__
