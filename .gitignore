@@ -12,6 +12,7 @@ checkbitrate
 *.deb
 *.rpm
 config.mak
+ffmpeg_lgpl/
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
