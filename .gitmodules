@@ -1,6 +1,3 @@
-[submodule "ffmpeg_lgpl"]
-	path = ffmpeg_lgpl
-	url = https://github.com/rigaya/ffmpeg_dlls_for_hwenc.git
 [submodule "build_pkg"]
 	path = build_pkg
 	url = https://github.com/rigaya/build_pkg.git
