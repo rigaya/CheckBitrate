@@ -606,7 +606,7 @@ protected:
     }
 protected:
     double m_dFrameDuration; //CFRを仮定する際のフレーム長 (AVQSV_PTS_ALL_INVALID, AVQSV_PTS_NONKEY_INVALID, AVQSV_PTS_NONKEY_INVALID時有効)
-    RGYQueueSPSP<FramePos, 1> m_list; //内部データサイズとFramePosのデータサイズを一致させるため、alignを1に設定
+    RGYQueueMPMP<FramePos, 1> m_list; //内部データサイズとFramePosのデータサイズを一致させるため、alignを1に設定
     int m_nNextFixNumIndex; //次にptsを確定させるフレームのインデックス
     bool m_bInputFin; //入力が終了したことを示すフラグ
     int64_t m_nDuration; //m_nDurationNumのフレーム数分のdurationの総和

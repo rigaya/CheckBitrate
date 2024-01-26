@@ -28,7 +28,7 @@
 #include <filesystem>
 #include <cstdint>
 #include "rgy_util.h"
-#include "rgy_env.h"
+//#include "rgy_env.h"
 #include "rgy_codepage.h"
 #include "rgy_filesystem.h"
 
@@ -308,7 +308,7 @@ bool rgy_path_is_same(const tstring& path1, const tstring& path2) {
     return rgy_path_is_same(path1.c_str(), path2.c_str());
 }
 
-#if defined(_WIN32) || defined(_WIN64)
+#if 0
 std::vector<std::basic_string<TCHAR>> createProcessOpenedFileList(const std::vector<size_t>& list_pid) {
     const auto list_handle = createProcessHandleList(list_pid, L"File");
     std::vector<std::basic_string<TCHAR>> list_file;

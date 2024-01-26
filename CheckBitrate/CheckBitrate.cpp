@@ -31,7 +31,7 @@
 #include <algorithm>
 #include <numeric>
 #include <memory>
-#include <map>
+#include <unordered_map>
 #include <chrono>
 #include <functional>
 #include <string>
@@ -47,27 +47,23 @@
 #endif
 
 struct StreamHandler {
-    AVCodecContext *pCodecCtx;
-
-    bool bUseHEVCmp42AnnexB;
-    vector<uint8_t> hevcMp42AnnexbBuffer;
-    AVBitStreamFilterContext *pH264Bsfc;
-    uint8_t *pExtradata;
-    int nExtradataSize;
     AVCodecParserContext *pParserCtx;
-
+    AVCodecContext *pCodecCtxParser;
+    AVRational streamTimebase;
     FramePosList framePosList;
+
+    StreamHandler() : pParserCtx(nullptr), pCodecCtxParser(nullptr), streamTimebase(), framePosList() {};
 };
 
 static inline bool av_isvalid_q(AVRational q) {
     return q.den * q.num != 0;
 }
 
-vector<int> getStreamIndex(AVFormatContext *pFormatCtx, AVMediaType type, const vector<int> *pVidStreamIndex = nullptr) {
-    vector<int> streams;
+std::vector<int> getStreamIndex(AVFormatContext *pFormatCtx, AVMediaType type, const std::vector<int> *pVidStreamIndex = nullptr) {
+    std::vector<int> streams;
     const int n_streams = pFormatCtx->nb_streams;
     for (int i = 0; i < n_streams; i++) {
-        if (pFormatCtx->streams[i]->codec->codec_type == type) {
+        if (pFormatCtx->streams[i]->codecpar->codec_type == type) {
             streams.push_back(i);
         }
     }
@@ -75,14 +71,14 @@ vector<int> getStreamIndex(AVFormatContext *pFormatCtx, AVMediaType type, const 
         std::sort(streams.begin(), streams.end(), [pFormatCtx = pFormatCtx](int streamIdA, int streamIdB) {
             auto pStreamA = pFormatCtx->streams[streamIdA];
             auto pStreamB = pFormatCtx->streams[streamIdB];
-            if (pStreamA->codec == nullptr) {
+            if (pStreamA->codecpar == nullptr) {
                 return false;
             }
-            if (pStreamB->codec == nullptr) {
+            if (pStreamB->codecpar == nullptr) {
                 return true;
             }
-            const int resA = pStreamA->codec->width * pStreamA->codec->height;
-            const int resB = pStreamB->codec->width * pStreamB->codec->height;
+            const int resA = pStreamA->codecpar->width * pStreamA->codecpar->height;
+            const int resB = pStreamB->codecpar->width * pStreamB->codecpar->height;
             return (resA > resB);
         });
     } else if (pVidStreamIndex && pVidStreamIndex->size()) {
@@ -98,10 +94,10 @@ vector<int> getStreamIndex(AVFormatContext *pFormatCtx, AVMediaType type, const 
             return ret;
         };
         std::sort(streams.begin(), streams.end(), [pFormatCtx = pFormatCtx, pVidStreamIndex, mostNearestVidStreamId](int streamIdA, int streamIdB) {
-            if (pFormatCtx->streams[streamIdA]->codec == nullptr) {
+            if (pFormatCtx->streams[streamIdA]->codecpar == nullptr) {
                 return false;
             }
-            if (pFormatCtx->streams[streamIdB]->codec == nullptr) {
+            if (pFormatCtx->streams[streamIdB]->codecpar == nullptr) {
                 return true;
             }
             auto pStreamIdA = pFormatCtx->streams[streamIdA]->id;
@@ -141,83 +137,7 @@ int selectStream(AVFormatContext *pFormatCtx, vector<int>& videoStreams, int nVi
     return nIndex;
 }
 
-void hevcMp42Annexb(AVPacket *pkt, StreamHandler& streamHandler) {
-    static const uint8_t SC[] = { 0, 0, 0, 1 };
-    const uint8_t *ptr, *ptr_fin;
-    vector<uint8_t>& hevcMp42AnnexbBuffer = streamHandler.hevcMp42AnnexbBuffer;
-    if (pkt == NULL) {
-        hevcMp42AnnexbBuffer.reserve(streamHandler.nExtradataSize + 128);
-        ptr = streamHandler.pExtradata;
-        ptr_fin = ptr + streamHandler.nExtradataSize;
-        ptr += 0x16;
-    } else {
-        hevcMp42AnnexbBuffer.reserve(pkt->size + 128);
-        ptr = pkt->data;
-        ptr_fin = ptr + pkt->size;
-    }
-    const int numOfArrays = *ptr;
-    ptr += !!numOfArrays;
-
-    while (ptr + 6 < ptr_fin) {
-        ptr += !!numOfArrays;
-        const int count = readUB16(ptr); ptr += 2;
-        int units = (numOfArrays) ? count : 1;
-        for (int i = (std::max)(1, units); i; i--) {
-            uint32_t size = readUB16(ptr); ptr += 2;
-            uint32_t uppper = count << 16;
-            size += (numOfArrays) ? 0 : uppper;
-            hevcMp42AnnexbBuffer.insert(hevcMp42AnnexbBuffer.end(), SC, SC+4);
-            hevcMp42AnnexbBuffer.insert(hevcMp42AnnexbBuffer.end(), ptr, ptr+size); ptr += size;
-        }
-    }
-    if (pkt) {
-        if (pkt->buf->size < (int)hevcMp42AnnexbBuffer.size()) {
-            av_grow_packet(pkt, (int)hevcMp42AnnexbBuffer.size());
-        }
-        memcpy(pkt->data, hevcMp42AnnexbBuffer.data(), hevcMp42AnnexbBuffer.size());
-        pkt->size = (int)hevcMp42AnnexbBuffer.size();
-    } else {
-        if (streamHandler.pExtradata) {
-            av_free(streamHandler.pExtradata);
-        }
-        streamHandler.pExtradata = (uint8_t *)av_malloc(hevcMp42AnnexbBuffer.size());
-        streamHandler.nExtradataSize = (int)hevcMp42AnnexbBuffer.size();
-        memcpy(streamHandler.pExtradata, hevcMp42AnnexbBuffer.data(), hevcMp42AnnexbBuffer.size());
-    }
-    hevcMp42AnnexbBuffer.clear();
-}
-
-
-int GetHeader(StreamHandler& streamHandler) {
-    if (streamHandler.pExtradata == nullptr) {
-        streamHandler.nExtradataSize = streamHandler.pCodecCtx->extradata_size;
-        //ここでav_mallocを使用しないと正常に動作しない
-        streamHandler.pExtradata = (uint8_t *)av_malloc(streamHandler.pCodecCtx->extradata_size + AV_INPUT_BUFFER_PADDING_SIZE);
-        //ヘッダのデータをコピーしておく
-        memcpy(streamHandler.pExtradata, streamHandler.pCodecCtx->extradata, streamHandler.nExtradataSize);
-        memset(streamHandler.pExtradata + streamHandler.nExtradataSize, 0, AV_INPUT_BUFFER_PADDING_SIZE);
-
-        if (streamHandler.bUseHEVCmp42AnnexB) {
-            hevcMp42Annexb(nullptr, streamHandler);
-        } else if (streamHandler.pH264Bsfc && streamHandler.pExtradata[0] == 1) {
-            uint8_t *dummy = nullptr;
-            int dummy_size = 0;
-            std::swap(streamHandler.pExtradata,     streamHandler.pCodecCtx->extradata);
-            std::swap(streamHandler.nExtradataSize, streamHandler.pCodecCtx->extradata_size);
-            av_bitstream_filter_filter(streamHandler.pH264Bsfc, streamHandler.pCodecCtx, nullptr, &dummy, &dummy_size, nullptr, 0, 0);
-            std::swap(streamHandler.pExtradata,     streamHandler.pCodecCtx->extradata);
-            std::swap(streamHandler.nExtradataSize, streamHandler.pCodecCtx->extradata_size);
-            av_bitstream_filter_close(streamHandler.pH264Bsfc);
-            if (NULL == (streamHandler.pH264Bsfc = av_bitstream_filter_init("h264_mp4toannexb"))) {
-                _ftprintf(stderr, _T("failed to init h264_mp4toannexb.\n"));
-                return 1;
-            }
-        }
-    }
-    return 0;
-}
-
-int check(AVFormatContext *pFormatCtx, std::map<int, StreamHandler>& streamHandlers, uint64_t filesize) {
+int check(AVFormatContext *pFormatCtx, std::unordered_map<int, std::unique_ptr<StreamHandler>>& streamHandlers, uint64_t filesize) {
     AVPacket pkt;
     av_init_packet(&pkt);
     auto tmupdate = std::chrono::system_clock::now();
@@ -232,28 +152,10 @@ int check(AVFormatContext *pFormatCtx, std::map<int, StreamHandler>& streamHandl
                 lastprogress = progress;
             }
         }
-        auto pCodecCtx = pFormatCtx->streams[pkt.stream_index]->codec;
-        if (pCodecCtx->codec_type == AVMEDIA_TYPE_VIDEO) {
-            auto pH264Bsfc = streamHandlers[pkt.stream_index].pH264Bsfc;
-            if (pH264Bsfc) {
-                uint8_t *data = nullptr;
-                int dataSize = 0;
-                std::swap(streamHandlers[pkt.stream_index].pExtradata, pCodecCtx->extradata);
-                std::swap(streamHandlers[pkt.stream_index].nExtradataSize, pCodecCtx->extradata_size);
-                av_bitstream_filter_filter(pH264Bsfc, pCodecCtx, nullptr,
-                    &data, &dataSize, pkt.data, pkt.size, 0);
-                std::swap(streamHandlers[pkt.stream_index].pExtradata, pCodecCtx->extradata);
-                std::swap(streamHandlers[pkt.stream_index].nExtradataSize, pCodecCtx->extradata_size);
-                AVPacket pktProp;
-                av_init_packet(&pktProp);
-                av_packet_copy_props(&pktProp, &pkt);
-                av_packet_unref(&pkt); //メモリ解放を忘れない
-                av_packet_copy_props(&pkt, &pktProp);
-                av_packet_from_data(&pkt, data, dataSize);
-            }
-            if (streamHandlers[pkt.stream_index].bUseHEVCmp42AnnexB) {
-                hevcMp42Annexb(&pkt, streamHandlers[pkt.stream_index]);
-            }
+        auto streamHandler = streamHandlers[pkt.stream_index].get();
+        const auto codecpar = pFormatCtx->streams[pkt.stream_index]->codecpar;
+        if (codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+            auto streamHandler = streamHandlers[pkt.stream_index].get();
             FramePos pos = { 0 };
             pos.pts = pkt.pts;
             pos.dts = pkt.dts;
@@ -262,20 +164,12 @@ int check(AVFormatContext *pFormatCtx, std::map<int, StreamHandler>& streamHandl
             pos.poc = AVQSV_POC_INVALID;
             pos.flags = (uint8_t)pkt.flags;
             pos.size = pkt.size;
-            auto pParserCtx = streamHandlers[pkt.stream_index].pParserCtx;
-            if (pParserCtx) {
-                auto bUseHEVCmp42AnnexB = streamHandlers[pkt.stream_index].bUseHEVCmp42AnnexB;
-                if (pH264Bsfc || bUseHEVCmp42AnnexB) {
-                    std::swap(streamHandlers[pkt.stream_index].pExtradata, pCodecCtx->extradata);
-                    std::swap(streamHandlers[pkt.stream_index].nExtradataSize, pCodecCtx->extradata_size);
-                }
+            auto pParserCtx = streamHandler->pParserCtx;
+            auto pCodecCtxParser = streamHandler->pCodecCtxParser;
+            if (pParserCtx && pCodecCtxParser) {
                 uint8_t *dummy = nullptr;
                 int dummy_size = 0;
-                av_parser_parse2(pParserCtx, pCodecCtx, &dummy, &dummy_size, pkt.data, pkt.size, pkt.pts, pkt.dts, pkt.pos);
-                if (pH264Bsfc || bUseHEVCmp42AnnexB) {
-                    std::swap(streamHandlers[pkt.stream_index].pExtradata, pCodecCtx->extradata);
-                    std::swap(streamHandlers[pkt.stream_index].nExtradataSize, pCodecCtx->extradata_size);
-                }
+                av_parser_parse2(pParserCtx, pCodecCtxParser, &dummy, &dummy_size, pkt.data, pkt.size, pkt.pts, pkt.dts, pkt.pos);
                 pos.pict_type = (uint8_t)std::max(pParserCtx->pict_type, 0);
                 switch (pParserCtx->picture_structure) {
                     //フィールドとして符号化されている
@@ -293,7 +187,7 @@ int check(AVFormatContext *pFormatCtx, std::map<int, StreamHandler>& streamHandl
                 }
                 pos.repeat_pict = (uint8_t)pParserCtx->repeat_pict;
             }
-            streamHandlers[pkt.stream_index].framePosList.add(pos);
+            streamHandler->framePosList.add(pos);
         }
         av_packet_unref(&pkt);
     }
@@ -304,7 +198,7 @@ static inline double ts2sec(int64_t ts, AVRational timebase) {
     return ts * av_q2d(timebase);
 }
 
-static int writeBitrate(const tstring& filename, StreamHandler& streamHandler, double interval) {
+static int writeBitrate(const tstring& filename, StreamHandler *streamHandler, double interval) {
     double tick = 0.0;
     uint64_t sizetick = 0;
     uint64_t sizesum = 0;
@@ -318,7 +212,7 @@ static int writeBitrate(const tstring& filename, StreamHandler& streamHandler, d
     double framesec = 0.0;
     uint32_t index = (uint32_t)-1;
     for (int poc = 0; ; poc++) {
-        auto framepos = streamHandler.framePosList.copy(poc, &index);
+        auto framepos = streamHandler->framePosList.copy(poc, &index);
         if (framepos.poc == AVQSV_POC_INVALID && framepos.pts == 0) {
             break;
         }
@@ -326,7 +220,7 @@ static int writeBitrate(const tstring& filename, StreamHandler& streamHandler, d
             if (firstpts == AV_NOPTS_VALUE) {
                 firstpts = framepos.pts;
             }
-            framesec = ts2sec(framepos.pts - firstpts, streamHandler.pCodecCtx->pkt_timebase);
+            framesec = ts2sec(framepos.pts - firstpts, streamHandler->streamTimebase);
             if (tick + interval < framesec) {
                 double time = framesec - tick;
                 double kbps = sizetick * 8 / time * 0.001;
@@ -346,7 +240,7 @@ static int writeBitrate(const tstring& filename, StreamHandler& streamHandler, d
     return 0;
 }
 
-static int writeGopLength(const tstring& filename, StreamHandler& streamHandler) {
+static int writeGopLength(const tstring& filename, StreamHandler *streamHandler) {
     double tick = 0.0;
     uint64_t sizetick = 0;
     uint64_t sizesum = 0;
@@ -359,7 +253,7 @@ static int writeGopLength(const tstring& filename, StreamHandler& streamHandler)
     uint32_t goplen = 0;
     uint32_t index = (uint32_t)-1;
     for (int poc = 0; ; poc++) {
-        auto framepos = streamHandler.framePosList.copy(poc, &index);
+        auto framepos = streamHandler->framePosList.copy(poc, &index);
         if (framepos.poc == AVQSV_POC_INVALID && framepos.pts == 0) {
             break;
         }
@@ -385,8 +279,6 @@ static int writeGopLength(const tstring& filename, StreamHandler& streamHandler)
 
 
 int run(const tstring& filename, double interval = 0.0, bool check_goplen = false, int nVideoTrack = 0, int nStreamId = 0) {
-    av_register_all();
-    avcodec_register_all();
     av_log_set_level(AV_LOG_ERROR);
 
     //UTF-8に変換
@@ -421,33 +313,37 @@ int run(const tstring& filename, double interval = 0.0, bool check_goplen = fals
     }
     //auto nVideoIndex = selectStream(pFormatCtx, videoStreams, nVideoTrack, nStreamId);
 
-    std::map<int, StreamHandler> streamHandlers;
+    std::unordered_map<int, std::unique_ptr<StreamHandler>> streamHandlers;
     for (auto index : videoStreams) {
-        StreamHandler stream;
-        streamHandlers[index].pCodecCtx = pFormatCtx->streams[index]->codec;
-        streamHandlers[index].pH264Bsfc = nullptr;
-        streamHandlers[index].pParserCtx = nullptr;
+        streamHandlers[index] = std::make_unique<StreamHandler>();
     }
 
     //必要ならbitstream filterを初期化
-    for (auto ist = streamHandlers.begin(); ist != streamHandlers.end(); ist++) {
-        auto pCodecCtx = pFormatCtx->streams[ist->first]->codec;
-        if (pCodecCtx->extradata && pCodecCtx->extradata[0] == 1) {
-            if (pCodecCtx->codec_id == AV_CODEC_ID_H264) {
-                if (NULL == (ist->second.pH264Bsfc = av_bitstream_filter_init("h264_mp4toannexb"))) {
-                    _ftprintf(stderr, _T("failed to init h264_mp4toannexb.\n"));
-                    return 1;
-                }
-            } else if (pCodecCtx->codec_id == AV_CODEC_ID_HEVC) {
-                ist->second.bUseHEVCmp42AnnexB = true;
+    for (auto& [index, st] : streamHandlers) {
+        const auto codecpar = pFormatCtx->streams[index]->codecpar;
+        st->pParserCtx = av_parser_init(codecpar->codec_id);
+        st->streamTimebase = pFormatCtx->streams[index]->time_base;
+        if (st->pParserCtx) {
+            st->pParserCtx->flags |= PARSER_FLAG_COMPLETE_FRAMES;
+            if (nullptr == (st->pCodecCtxParser = avcodec_alloc_context3(avcodec_find_decoder(codecpar->codec_id)))) {
+                _ftprintf(stderr, _T("failed to allocate context for parser.\n"));
+                return 1;
             }
+            unique_ptr_custom<AVCodecParameters> codecParamCopy(avcodec_parameters_alloc(), [](AVCodecParameters *pCodecPar) {
+                avcodec_parameters_free(&pCodecPar);
+                });
+            int ret = 0;
+            if (0 > (ret = avcodec_parameters_copy(codecParamCopy.get(), codecpar))) {
+                _ftprintf(stderr, _T("failed to copy codec param to context for parser.\n"));
+                return 1;
+            }
+            if (0 > (ret = avcodec_parameters_to_context(st->pCodecCtxParser, codecParamCopy.get()))) {
+                _ftprintf(stderr, _T("failed to set codec param to context for parser.\n"));
+                return 1;
+            }
+            st->pCodecCtxParser->time_base = av_stream_get_codec_timebase(pFormatCtx->streams[index]);
+            st->pCodecCtxParser->pkt_timebase = pFormatCtx->streams[index]->time_base;
         }
-        ist->second.pParserCtx = av_parser_init(pCodecCtx->codec_id);
-        if (ist->second.pParserCtx) {
-            ist->second.pParserCtx->flags |= PARSER_FLAG_COMPLETE_FRAMES;
-        }
-
-        GetHeader(ist->second);
     }
 
     uint64_t filesize = 0;
@@ -462,34 +358,33 @@ int run(const tstring& filename, double interval = 0.0, bool check_goplen = fals
     _ftprintf(stderr, _T("analyzing video bitrate (interval: %.2f sec)...\n"), interval);
 
 
-    for (auto ist = streamHandlers.begin(); ist != streamHandlers.end(); ist++) {
-        _ftprintf(stderr, _T("output bitrate of video track #%d...\n"), ist->first + 1);
+    for (auto& [index, st] : streamHandlers) {
+        _ftprintf(stderr, _T("output bitrate of video track #%d...\n"), index + 1);
         double dEstFrameDurationByFpsDecoder = 0.0;
-        AVRational fpsDecoder = ist->second.pCodecCtx->framerate;
-        if (av_isvalid_q(fpsDecoder) && av_isvalid_q(ist->second.pCodecCtx->pkt_timebase)) {
-            dEstFrameDurationByFpsDecoder = av_q2d(av_inv_q(fpsDecoder)) * av_q2d(av_inv_q(ist->second.pCodecCtx->pkt_timebase));
+        AVRational fpsDecoder = st->pCodecCtxParser->framerate;
+        if (av_isvalid_q(fpsDecoder) && av_isvalid_q(st->streamTimebase)) {
+            dEstFrameDurationByFpsDecoder = av_q2d(av_inv_q(fpsDecoder)) * av_q2d(av_inv_q(st->streamTimebase));
         }
-        ist->second.framePosList.checkPtsStatus(dEstFrameDurationByFpsDecoder);
+        st->framePosList.checkPtsStatus(dEstFrameDurationByFpsDecoder);
 
         //動画の終端を表す最後のptsを挿入する
         int64_t videoFinPts = 0;
-        const int nFrameNum = ist->second.framePosList.frameNum();
-        if (ist->second.framePosList.getStreamPtsStatus() & AVQSV_PTS_ALL_INVALID) {
-            videoFinPts = nFrameNum * ist->second.framePosList.list(0).duration;
+        const int nFrameNum = st->framePosList.frameNum();
+        if (st->framePosList.getStreamPtsStatus() & AVQSV_PTS_ALL_INVALID) {
+            videoFinPts = nFrameNum * st->framePosList.list(0).duration;
         } else if (nFrameNum) {
-            const FramePos *lastFrame = &ist->second.framePosList.list(nFrameNum - 1);
+            const FramePos *lastFrame = &st->framePosList.list(nFrameNum - 1);
             videoFinPts = lastFrame->pts + lastFrame->duration;
         }
         //最後のフレーム情報をセットし、m_Demux.framesの内部状態を終了状態に移行する
-        ist->second.framePosList.fin(framePos(videoFinPts, videoFinPts, 0), pFormatCtx->duration);
-
+        st->framePosList.fin(framePos(videoFinPts, videoFinPts, 0), pFormatCtx->duration);
 
         //tstring outfile = filename + _T(".track") + std::to_tstring(ist->first + 1) + _T(".framepos.csv");
-        //ist->second.framePosList.printList(outfile.c_str());
+        //st->framePosList.printList(outfile.c_str());
 
-        writeBitrate(filename + _T(".track") + std::to_tstring(ist->first + 1) + _T(".bitrate.csv"), ist->second, interval);
+        writeBitrate(filename + _T(".track") + std::to_tstring(index + 1) + _T(".bitrate.csv"), st.get(), interval);
         if (check_goplen) {
-            writeGopLength(filename + _T(".track") + std::to_tstring(ist->first + 1) + _T(".goplen.txt"), ist->second);
+            writeGopLength(filename + _T(".track") + std::to_tstring(index + 1) + _T(".goplen.txt"), st.get());
         }
     }
 
