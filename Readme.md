@@ -1,5 +1,7 @@
 
 # CheckBitrate
+[![Build Windows Releases](https://github.com/rigaya/CheckBitrate/actions/workflows/build_releases.yml/badge.svg)](https://github.com/rigaya/CheckBitrate/actions/workflows/build_releases.yml) [![Build Linux Packages](https://github.com/rigaya/CheckBitrate/actions/workflows/build_packages.yml/badge.svg)](https://github.com/rigaya/CheckBitrate/actions/workflows/build_packages.yml)  
+
 Output bitrate distribution of video file(s) in csv format.
 
 **[日本語版はこちら＞＞](./Readme.ja.md)**  

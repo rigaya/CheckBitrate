@@ -70,7 +70,7 @@ jobs:
 
       - name: MSBuild
         run: |
-          msbuild CheckBitrate.sln /t:build /p:configuration=Release /p:Platform=${{ matrix.arch }} -maxcpucount
+          msbuild CheckBitrate.sln /t:build /p:configuration=Release /p:Platform=${{ matrix.platform }} -maxcpucount
 
       - name: Create Archieve
         id: archieve

@@ -1,5 +1,6 @@
 
 # CheckBitrate  
+[![Build Windows Releases](https://github.com/rigaya/CheckBitrate/actions/workflows/build_releases.yml/badge.svg)](https://github.com/rigaya/CheckBitrate/actions/workflows/build_releases.yml) [![Build Linux Packages](https://github.com/rigaya/CheckBitrate/actions/workflows/build_packages.yml/badge.svg)](https://github.com/rigaya/CheckBitrate/actions/workflows/build_packages.yml)  
 
 動画ファイルを分析して、ビットレート分布をcsvで出力します。  
 csvをエクセルなりなんなりでグラフにしてみてください。
