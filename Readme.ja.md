@@ -1,6 +1,5 @@
 
-# CheckBitrate
-[![Build status](https://ci.appveyor.com/api/projects/status/ww315kwjv2br1syo?svg=true)](https://ci.appveyor.com/project/rigaya/checkbitrate)  [![Build Linux Packages](https://github.com/rigaya/CheckBitrate/actions/workflows/build_packages.yml/badge.svg?branch=master)](https://github.com/rigaya/CheckBitrate/actions/workflows/build_packages.yml)  
+# CheckBitrate  
 
 動画ファイルを分析して、ビットレート分布をcsvで出力します。  
 csvをエクセルなりなんなりでグラフにしてみてください。
