@@ -110,7 +110,7 @@ std::vector<int> getStreamIndex(AVFormatContext *pFormatCtx, AVMediaType type, c
             return nearestVidA.first < nearestVidB.first;
         });
     }
-    return std::move(streams);
+    return streams;
 }
 
 int selectStream(AVFormatContext *pFormatCtx, vector<int>& videoStreams, int nVideoTrack, int nStreamId) {
@@ -476,7 +476,7 @@ void print_help() {
     str += _T("\n");
     str += _T("Options:\n");
     str += _T("-i,--interval <float>   bitrate calc interval in seconds.\n");
-    _ftprintf(stdout, str.c_str());
+    _ftprintf(stdout, _T("%s"), str.c_str());
 }
 
 int _tmain(int argc, TCHAR **argv) {
@@ -526,7 +526,7 @@ int _tmain(int argc, TCHAR **argv) {
         }
     }
     if (!check_avcodec_dll()) {
-        _ftprintf(stdout, error_mes_avcodec_dll_not_found().c_str());
+        _ftprintf(stdout, _T("%s"), error_mes_avcodec_dll_not_found().c_str());
         return 1;
     }
     for (auto filename : filelist) {
