@@ -152,7 +152,10 @@ int check(AVFormatContext *pFormatCtx, std::unordered_map<int, std::unique_ptr<S
                 lastprogress = progress;
             }
         }
-        auto streamHandler = streamHandlers[pkt.stream_index].get();
+        if (pkt.flags & (AV_PKT_FLAG_CORRUPT | AV_PKT_FLAG_DISCARD)) {
+            av_packet_unref(&pkt);
+            continue;
+        }
         const auto codecpar = pFormatCtx->streams[pkt.stream_index]->codecpar;
         if (codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
             auto streamHandler = streamHandlers[pkt.stream_index].get();
