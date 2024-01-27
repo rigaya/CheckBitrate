@@ -14,9 +14,9 @@ if [ -e /etc/lsb-release ]; then
     PACKAGE_OS_VER=`cat /etc/lsb-release | grep DISTRIB_RELEASE | cut -f 2 --delim="="`
     PACKAGE_OS_CODENAME=`cat /etc/lsb-release | grep DISTRIB_CODENAME | cut -f 2 --delim="="`
     PACKAGE_OS="_${PACKAGE_OS_ID}${PACKAGE_OS_VER}"
-    if [ "${PACKAGE_OS_CODENAME}" = "focal" ]; then
+    if [ "${PACKAGE_OS_CODENAME}" = "focal" ] || [ "${PACKAGE_OS_CODENAME}" = "jammy" ]; then
         PACKAGE_DEPENDS="libc6(>=2.29),libstdc++6(>=6)"
-        PACKAGE_DEPENDS="${PACKAGE_DEPENDS},libavcodec58,libavutil56,libavformat58,libswresample3"
+        PACKAGE_DEPENDS="${PACKAGE_DEPENDS},libavcodec58,libavutil56,libavformat58"
     else
         echo "${PACKAGE_OS_ID}${PACKAGE_OS_VER} ${PACKAGE_OS_CODENAME} not supported in this script!"
         exit 1

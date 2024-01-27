@@ -97,10 +97,11 @@ X86_64=1
 NO_RDTSCP_INTRIN=0
 ENABLE_AVSW_READER=1
 
-CHECK_LIBAV_NAMES="libswresample libavutil libavcodec libavformat"
+CHECK_LIBAV_NAMES="libavutil libavcodec libavformat"
 LIBAV_CFLAGS=""
 LIBAV_LIBS=""
 ENABLE_AVSW_READER=1
+AV_CHANNEL_LAYOUT_STRUCT_AVAIL=1
 
 print_help()
 {
@@ -341,9 +342,9 @@ if [ $ENABLE_AVSW_READER -ne 0 ]; then
         cnf_write "yes"
     fi
     
-    if ! cxx_check "libswresample" "${CXXFLAGS} ${EXTRACXXFLAGS} ${LIBAV_CFLAGS} ${LDFLAGS} ${EXTRALDFLAGS} ${LIBAV_LIBS}" "" "libswresample/swresample.h" "swr_alloc();" ; then
+    if ! cxx_check "AVChannelLayout" "${CXXFLAGS} ${EXTRACXXFLAGS} ${LIBAV_CFLAGS} ${LDFLAGS} ${EXTRALDFLAGS} ${LIBAV_LIBS}" "" "libavutil/channel_layout.h" "AVChannelLayout ch_layout;" ; then
         cnf_write "no"
-        ENABLE_AVSW_READER=0
+        AV_CHANNEL_LAYOUT_STRUCT_AVAIL=0
     else
         cnf_write "yes"
     fi
@@ -376,7 +377,7 @@ write_config_mak "LD  = $LD"
 write_config_mak "PROGRAM = $PROGRAM"
 write_config_mak "ENABLE_DEBUG = $ENABLE_DEBUG"
 write_config_mak "CFLAGS = $CFLAGS"
-write_config_mak "CXXFLAGS = $CXXFLAGS $EXTRACXXFLAGS $LIBAV_CFLAGS"
+write_config_mak "CXXFLAGS = $CXXFLAGS $EXTRACXXFLAGS -DAV_CHANNEL_LAYOUT_STRUCT_AVAIL=$AV_CHANNEL_LAYOUT_STRUCT_AVAIL $LIBAV_CFLAGS"
 write_config_mak "LDFLAGS = $LDFLAGS $EXTRALDFLAGS $LIBAV_LIBS"
 write_config_mak "PREFIX = $PREFIX"
 echo "X86_64 = ${X86_64}"
