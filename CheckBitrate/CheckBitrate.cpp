@@ -401,6 +401,67 @@ int run(const tstring& filename, double interval = 0.0, bool check_goplen = fals
     return 0;
 }
 
+//必要なavcodecのdllがそろっているかを確認
+
+static const TCHAR *AVCODEC_DLL_NAME[] = {
+    _T("avcodec-60.dll"), _T("avformat-60.dll"), _T("avutil-58.dll")
+};
+
+//avcodecのdllが存在しない場合のエラーメッセージ
+tstring error_mes_avcodec_dll_not_found() {
+    tstring mes;
+    mes += _T("avcodec: failed to load dlls.\n");
+    mes += _T("please make sure ");
+    for (int i = 0; i < _countof(AVCODEC_DLL_NAME); i++) {
+        if (i) mes += _T(", ");
+        if (i % 3 == 2) {
+            mes += _T("\n");
+        }
+        mes += _T("\"") + tstring(AVCODEC_DLL_NAME[i]) + _T("\"");
+    }
+    mes += _T("\nis installed in your system.\n");
+    return mes;
+}
+
+bool check_avcodec_dll() {
+#if defined(_WIN32) || defined(_WIN64)
+    // static変数として、一度存在を確認したら再度チェックはしないように
+    static bool check = false;
+    if (check) return check;
+    std::vector<HMODULE> hDllList;
+    check = true;
+    for (int i = 0; i < _countof(AVCODEC_DLL_NAME); i++) {
+        HMODULE hDll = NULL;
+        if (NULL == (hDll = LoadLibrary(AVCODEC_DLL_NAME[i]))) {
+            check = false;
+            break;
+        }
+        hDllList.push_back(hDll);
+    }
+    for (auto hDll : hDllList) {
+        FreeLibrary(hDll);
+    }
+    return check;
+#else
+    return true;
+#endif //#if defined(_WIN32) || defined(_WIN64)
+}
+
+tstring getAVVersions() {
+    if (!check_avcodec_dll()) {
+        return error_mes_avcodec_dll_not_found();
+    }
+    auto ver2str = [](uint32_t ver) {
+        return strsprintf("%3d.%3d.%4d", (ver >> 16) & 0xff, (ver >> 8) & 0xff, ver & 0xff);
+        };
+    std::string mes;
+    mes = std::string("ffmpeg     version: ") + std::string(av_version_info()) + "\n";
+    mes += std::string("avutil     version: ") + ver2str(avutil_version()) + "\n";
+    mes += std::string("avcodec    version: ") + ver2str(avcodec_version()) + "\n";
+    mes += std::string("avformat   version: ") + ver2str(avformat_version()) + "\n";
+    return char_to_tstring(mes);
+}
+
 void option_error(const TCHAR *option, const TCHAR *argvalue) {
     if (argvalue == nullptr) {
         _ftprintf(stderr, _T("--%s requires value.\n"), option);
@@ -463,6 +524,10 @@ int _tmain(int argc, TCHAR **argv) {
         } else {
             filelist.push_back(argv[i]);
         }
+    }
+    if (!check_avcodec_dll()) {
+        _ftprintf(stdout, error_mes_avcodec_dll_not_found().c_str());
+        return 1;
     }
     for (auto filename : filelist) {
         run(filename, interval, check_goplen);

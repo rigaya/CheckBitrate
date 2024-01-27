@@ -1,0 +1,106 @@
+name: Build Windows Releases
+
+on:
+  push:
+    branches:
+      - master
+      - actions
+    tags:
+      - '*'
+
+jobs:
+  get_version_name:
+    name: Get version name
+    runs-on: ubuntu-latest
+    outputs:
+      rev_count: ${{ steps.rev.outputs.rev_count }}
+      version_name: ${{ steps.rev.outputs.version_name }}
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+    - name: Set version name
+      id: rev
+      run: |
+        cd ${{ github.workspace }}
+        REVCOUNT=`git rev-list --count HEAD`
+        echo "rev_count=${REVCOUNT}" >> $GITHUB_OUTPUT
+        if [[ "${{ github.ref }}" =~ "refs/tags/" ]]; then
+          VERSION=$(echo ${{ github.ref }} | sed -e "s#refs/tags/##g")
+        else
+          VERSION=r${REVCOUNT}
+        fi
+        echo "version_name=${VERSION}" >> $GITHUB_OUTPUT
+
+  build:
+    name: Upload Release Asset
+    runs-on: windows-2022
+    needs: get_version_name
+
+    defaults:
+      run:
+        shell: cmd
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86
+            platform: Win32
+          - arch: x64
+            platform: x64
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          submodules: true
+          fetch-depth: 0
+
+      - name: Checkout dependencies
+        run: |
+          curl -s -o ffmpeg_lgpl.7z -L https://github.com/rigaya/ffmpeg_dlls_for_hwenc/releases/download/20231123/ffmpeg_dlls_for_hwenc_20231123.7z
+          7z x -offmpeg_lgpl -y ffmpeg_lgpl.7z
+
+      - name: Add msbuild to PATH
+        uses: microsoft/setup-msbuild@v1.1
+        with:
+          msbuild-architecture: ${{ matrix.arch }}
+
+      - name: MSBuild
+        run: |
+          msbuild CheckBitrate.sln /t:build /p:configuration=Release /p:Platform=${{ matrix.arch }} -maxcpucount
+
+      - name: Create Archieve
+        id: archieve
+        run: |
+          mkdir CheckBitrate_Release
+          copy ${{ matrix.platform }}\Release\CheckBitrate*.exe CheckBitrate_Release
+          copy ${{ matrix.platform }}\Release\*.dll CheckBitrate_Release
+          7z a -mx9 CheckBitrate_${{ needs.get_version_name.outputs.version_name }}_${{ matrix.platform }}.7z .\CheckBitrate_Release\*
+
+      - name: Check dll
+        run: |
+          "CheckBitrate_Release\CheckBitrate.exe" --check-avcodec-dll
+
+      - name: Check Version
+        if: startsWith(github.ref, 'refs/tags/')
+        id: check_ver
+        run: |
+          powershell "$ver = (Get-ItemProperty .\CheckBitrate_Release\CheckBitrate*.exe).VersionInfo.FileVersion; if ($ver -eq '${{ needs.get_version_name.outputs.version_name }}') { exit 0; } exit 1;"
+
+      - name: Upload Release Asset
+        id: upload-release-asset 
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          files: CheckBitrate_${{ needs.get_version_name.outputs.version_name }}_${{ matrix.platform }}.7z
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: CheckBitrate_release_${{ needs.get_version_name.outputs.version_name }}_${{ matrix.platform }}
+          path: CheckBitrate_${{ needs.get_version_name.outputs.version_name }}_${{ matrix.platform }}.7z
