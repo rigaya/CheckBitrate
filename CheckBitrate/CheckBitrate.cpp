@@ -46,6 +46,18 @@
 #define to_tstring to_string
 #endif
 
+static const TCHAR *AVCODEC_DLL_NAME[] = {
+    _T("avcodec-60.dll"), _T("avformat-60.dll"), _T("avutil-58.dll")
+};
+
+template<typename T>
+struct RGYAVDeleter {
+    RGYAVDeleter() : deleter(nullptr) {};
+    RGYAVDeleter(std::function<void(T**)> deleter) : deleter(deleter) {};
+    void operator()(T *p) { deleter(&p); }
+    std::function<void(T**)> deleter;
+};
+
 struct StreamHandler {
     AVCodecParserContext *pParserCtx;
     AVCodecContext *pCodecCtxParser;
@@ -137,46 +149,45 @@ int selectStream(AVFormatContext *pFormatCtx, vector<int>& videoStreams, int nVi
     return nIndex;
 }
 
-int check(AVFormatContext *pFormatCtx, std::unordered_map<int, std::unique_ptr<StreamHandler>>& streamHandlers, uint64_t filesize) {
-    AVPacket pkt;
-    av_init_packet(&pkt);
+int check(AVFormatContext *pFormatCtx, std::unordered_map<int, std::unique_ptr<StreamHandler>>& streamHandlers, const uint64_t filesize) {
+    std::unique_ptr<AVPacket, RGYAVDeleter<AVPacket>> pkt(av_packet_alloc(), RGYAVDeleter<AVPacket>(av_packet_free));
     auto tmupdate = std::chrono::system_clock::now();
     double lastprogress = 0.0;
     int vidpkts = 0;
-    while (av_read_frame(pFormatCtx, &pkt) >= 0) {
-        if (pkt.flags & (AV_PKT_FLAG_CORRUPT | AV_PKT_FLAG_DISCARD)) {
-            av_packet_unref(&pkt);
+    while (av_read_frame(pFormatCtx, pkt.get()) >= 0) {
+        if (pkt->flags & (AV_PKT_FLAG_CORRUPT | AV_PKT_FLAG_DISCARD)) {
+            av_packet_unref(pkt.get());
             continue;
         }
-        const auto codecpar = pFormatCtx->streams[pkt.stream_index]->codecpar;
+        const auto codecpar = pFormatCtx->streams[pkt->stream_index]->codecpar;
         if (codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
             vidpkts++;
             if ((vidpkts % 500) == 0) {
                 auto tmnow = std::chrono::system_clock::now();
                 if (tmnow - tmupdate > std::chrono::milliseconds(500)) {
-                    double progress = pkt.pos * 100.0 / (double)filesize;
+                    double progress = pkt->pos * 100.0 / (double)filesize;
                     if (progress > lastprogress) {
                         tmupdate = tmnow;
-                        _ftprintf(stderr, _T("reading input file %.2f%%  \r"), pkt.pos * 100.0 / (double)filesize);
+                        _ftprintf(stderr, _T("reading input file %.2f%%  \r"), pkt->pos * 100.0 / (double)filesize);
                         lastprogress = progress;
                     }
                 }
             }
-            auto streamHandler = streamHandlers[pkt.stream_index].get();
+            auto streamHandler = streamHandlers[pkt->stream_index].get();
             FramePos pos = { 0 };
-            pos.pts = pkt.pts;
-            pos.dts = pkt.dts;
-            pos.duration = (int)pkt.duration;
+            pos.pts = pkt->pts;
+            pos.dts = pkt->dts;
+            pos.duration = (int)pkt->duration;
             pos.duration2 = 0;
             pos.poc = AVQSV_POC_INVALID;
-            pos.flags = (uint8_t)pkt.flags;
-            pos.size = pkt.size;
+            pos.flags = (uint8_t)pkt->flags;
+            pos.size = pkt->size;
             auto pParserCtx = streamHandler->pParserCtx;
             auto pCodecCtxParser = streamHandler->pCodecCtxParser;
             if (pParserCtx && pCodecCtxParser) {
                 uint8_t *dummy = nullptr;
                 int dummy_size = 0;
-                av_parser_parse2(pParserCtx, pCodecCtxParser, &dummy, &dummy_size, pkt.data, pkt.size, pkt.pts, pkt.dts, pkt.pos);
+                av_parser_parse2(pParserCtx, pCodecCtxParser, &dummy, &dummy_size, pkt->data, pkt->size, pkt->pts, pkt->dts, pkt->pos);
                 pos.pict_type = (uint8_t)std::max(pParserCtx->pict_type, 0);
                 switch (pParserCtx->picture_structure) {
                     //フィールドとして符号化されている
@@ -196,7 +207,7 @@ int check(AVFormatContext *pFormatCtx, std::unordered_map<int, std::unique_ptr<S
             }
             streamHandler->framePosList.add(pos);
         }
-        av_packet_unref(&pkt);
+        av_packet_unref(pkt.get());
     }
     return 0;
 }
@@ -406,10 +417,6 @@ int run(const tstring& filename, double interval = 0.0, bool check_goplen = fals
 }
 
 //必要なavcodecのdllがそろっているかを確認
-
-static const TCHAR *AVCODEC_DLL_NAME[] = {
-    _T("avcodec-60.dll"), _T("avformat-60.dll"), _T("avutil-58.dll")
-};
 
 //avcodecのdllが存在しない場合のエラーメッセージ
 tstring error_mes_avcodec_dll_not_found() {
