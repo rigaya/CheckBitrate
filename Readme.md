@@ -8,12 +8,12 @@ Output bitrate distribution of video file(s) in csv format.
 [github releases>>](https://github.com/rigaya/CheckBitrate/releases)
 
 ## System Requirements  
-Windows 10 (x86/x64)  
+Windows 10/11 (x86/x64)  
 Linux
 
 ## Usage
 ```bat
-CheckBitrate.exe　[Options] <Video File 1> [<Video File 2>]...
+CheckBitrate.exe [Options] <Video File 1> [<Video File 2>]...
 ```
 The bitrate distribution will be written in &lt;Video File Name&gt;.trackID.bitrate.csv.
 

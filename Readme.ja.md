@@ -8,12 +8,12 @@ csvをエクセルなりなんなりでグラフにしてみてください。
 [github releases>>](https://github.com/rigaya/CheckBitrate/releases)
 
 ## 動作環境
-Windows 10 (x86/x64)  
+Windows 10/11 (x86/x64)  
 Linux
 
 ## 使用方法
 ```bat
-CheckBitrate.exe　[オプション] <動画ファイル1> [<動画ファイル2>]...
+CheckBitrate.exe [オプション] <動画ファイル1> [<動画ファイル2>]...
 ```
 チェックしたい動画ファイルをドラッグ&ドロップしてください。
 &lt;動画ファイル&gt;.trackID.bitrate.csvに解析結果が出力されます。
