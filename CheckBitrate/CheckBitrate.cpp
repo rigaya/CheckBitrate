@@ -142,22 +142,26 @@ int check(AVFormatContext *pFormatCtx, std::unordered_map<int, std::unique_ptr<S
     av_init_packet(&pkt);
     auto tmupdate = std::chrono::system_clock::now();
     double lastprogress = 0.0;
+    int vidpkts = 0;
     while (av_read_frame(pFormatCtx, &pkt) >= 0) {
-        auto tmnow = std::chrono::system_clock::now();
-        if (tmnow - tmupdate > std::chrono::milliseconds(500)) {
-            double progress = pkt.pos * 100.0 / (double)filesize;
-            if (progress > lastprogress) {
-                tmupdate = tmnow;
-                _ftprintf(stderr, _T("reading input file %.2f%%  \r"), pkt.pos * 100.0 / (double)filesize);
-                lastprogress = progress;
-            }
-        }
         if (pkt.flags & (AV_PKT_FLAG_CORRUPT | AV_PKT_FLAG_DISCARD)) {
             av_packet_unref(&pkt);
             continue;
         }
         const auto codecpar = pFormatCtx->streams[pkt.stream_index]->codecpar;
         if (codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+            vidpkts++;
+            if ((vidpkts % 500) == 0) {
+                auto tmnow = std::chrono::system_clock::now();
+                if (tmnow - tmupdate > std::chrono::milliseconds(500)) {
+                    double progress = pkt.pos * 100.0 / (double)filesize;
+                    if (progress > lastprogress) {
+                        tmupdate = tmnow;
+                        _ftprintf(stderr, _T("reading input file %.2f%%  \r"), pkt.pos * 100.0 / (double)filesize);
+                        lastprogress = progress;
+                    }
+                }
+            }
             auto streamHandler = streamHandlers[pkt.stream_index].get();
             FramePos pos = { 0 };
             pos.pts = pkt.pts;
