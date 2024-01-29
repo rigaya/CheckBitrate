@@ -38,7 +38,20 @@
 #include "CheckBitrateVersion.h"
 #include "rgy_util.h"
 #include "rgy_filesystem.h"
-#include "avcodec_reader.h"
+#pragma warning (push)
+#pragma warning (disable: 4244)
+#pragma warning (disable: 4819)
+extern "C" {
+#include <libavutil/avutil.h>
+#include <libavutil/error.h>
+#include <libavutil/opt.h>
+#include <libavformat/avformat.h>
+#include <libavcodec/avcodec.h>
+}
+#pragma comment (lib, "avcodec.lib")
+#pragma comment (lib, "avformat.lib")
+#pragma comment (lib, "avutil.lib")
+#pragma warning (pop)
 
 #ifdef UNICODE
 #define to_tstring to_wstring
@@ -58,18 +71,23 @@ struct RGYAVDeleter {
     std::function<void(T**)> deleter;
 };
 
-struct StreamHandler {
-    AVCodecParserContext *pParserCtx;
-    AVCodecContext *pCodecCtxParser;
-    AVRational streamTimebase;
-    FramePosList framePosList;
+struct FrameData {
+    int64_t pts;
+    int64_t dts;
+    int size;
+    uint32_t flags;
 
-    StreamHandler() : pParserCtx(nullptr), pCodecCtxParser(nullptr), streamTimebase(), framePosList() {};
+    FrameData() : pts(0), dts(0), size(0), flags(0) {};
+    FrameData(int64_t pts_, int64_t dts_, int size_, uint32_t flags_) : pts(pts_), dts(dts_), size(size_), flags(flags_) {};
 };
 
-static inline bool av_isvalid_q(AVRational q) {
-    return q.den * q.num != 0;
-}
+struct StreamHandler {
+    int streamId;
+    AVRational streamTimebase;
+    std::vector<FrameData> frameDataList;
+
+    StreamHandler(int stream_id, AVRational stream_timebase) : streamId(stream_id), streamTimebase(stream_timebase), frameDataList() {};
+};
 
 std::vector<int> getStreamIndex(AVFormatContext *pFormatCtx, AVMediaType type, const std::vector<int> *pVidStreamIndex = nullptr) {
     std::vector<int> streams;
@@ -125,7 +143,7 @@ std::vector<int> getStreamIndex(AVFormatContext *pFormatCtx, AVMediaType type, c
     return streams;
 }
 
-int selectStream(AVFormatContext *pFormatCtx, vector<int>& videoStreams, int nVideoTrack, int nStreamId) {
+int selectStream(AVFormatContext *pFormatCtx, std::vector<int>& videoStreams, int nVideoTrack, int nStreamId) {
     int nIndex = videoStreams[0];
     if (nVideoTrack) {
         if (videoStreams.size() < (uint32_t)std::abs(nVideoTrack)) {
@@ -149,20 +167,20 @@ int selectStream(AVFormatContext *pFormatCtx, vector<int>& videoStreams, int nVi
     return nIndex;
 }
 
-int check(AVFormatContext *pFormatCtx, std::unordered_map<int, std::unique_ptr<StreamHandler>>& streamHandlers, const uint64_t filesize) {
+int check(AVFormatContext *pFormatCtx, std::vector<std::unique_ptr<StreamHandler>>& streamHandlers, const uint64_t filesize) {
     std::unique_ptr<AVPacket, RGYAVDeleter<AVPacket>> pkt(av_packet_alloc(), RGYAVDeleter<AVPacket>(av_packet_free));
     auto tmupdate = std::chrono::system_clock::now();
     double lastprogress = 0.0;
     int vidpkts = 0;
     while (av_read_frame(pFormatCtx, pkt.get()) >= 0) {
-        if (pkt->flags & (AV_PKT_FLAG_CORRUPT | AV_PKT_FLAG_DISCARD)) {
+        if (pkt->flags & AV_PKT_FLAG_CORRUPT) {
             av_packet_unref(pkt.get());
             continue;
         }
         const auto codecpar = pFormatCtx->streams[pkt->stream_index]->codecpar;
         if (codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
             vidpkts++;
-            if ((vidpkts % 500) == 0) {
+            if ((vidpkts % 1000) == 0) {
                 auto tmnow = std::chrono::system_clock::now();
                 if (tmnow - tmupdate > std::chrono::milliseconds(500)) {
                     double progress = pkt->pos * 100.0 / (double)filesize;
@@ -173,39 +191,7 @@ int check(AVFormatContext *pFormatCtx, std::unordered_map<int, std::unique_ptr<S
                     }
                 }
             }
-            auto streamHandler = streamHandlers[pkt->stream_index].get();
-            FramePos pos = { 0 };
-            pos.pts = pkt->pts;
-            pos.dts = pkt->dts;
-            pos.duration = (int)pkt->duration;
-            pos.duration2 = 0;
-            pos.poc = AVQSV_POC_INVALID;
-            pos.flags = (uint8_t)pkt->flags;
-            pos.size = pkt->size;
-            auto pParserCtx = streamHandler->pParserCtx;
-            auto pCodecCtxParser = streamHandler->pCodecCtxParser;
-            if (pParserCtx && pCodecCtxParser) {
-                uint8_t *dummy = nullptr;
-                int dummy_size = 0;
-                av_parser_parse2(pParserCtx, pCodecCtxParser, &dummy, &dummy_size, pkt->data, pkt->size, pkt->pts, pkt->dts, pkt->pos);
-                pos.pict_type = (uint8_t)std::max(pParserCtx->pict_type, 0);
-                switch (pParserCtx->picture_structure) {
-                    //フィールドとして符号化されている
-                case AV_PICTURE_STRUCTURE_TOP_FIELD:    pos.pic_struct = AVQSV_PICSTRUCT_FIELD_TOP; break;
-                case AV_PICTURE_STRUCTURE_BOTTOM_FIELD: pos.pic_struct = AVQSV_PICSTRUCT_FIELD_BOTTOM; break;
-                    //フレームとして符号化されている
-                default:
-                    switch (pParserCtx->field_order) {
-                    case AV_FIELD_TT:
-                    case AV_FIELD_TB: pos.pic_struct = AVQSV_PICSTRUCT_FRAME_TFF; break;
-                    case AV_FIELD_BT:
-                    case AV_FIELD_BB: pos.pic_struct = AVQSV_PICSTRUCT_FRAME_BFF; break;
-                    default:          pos.pic_struct = AVQSV_PICSTRUCT_FRAME;     break;
-                    }
-                }
-                pos.repeat_pict = (uint8_t)pParserCtx->repeat_pict;
-            }
-            streamHandler->framePosList.add(pos);
+            streamHandlers[pkt->stream_index]->frameDataList.emplace_back(FrameData(pkt->pts, pkt->dts, pkt->size, pkt->flags));
         }
         av_packet_unref(pkt.get());
     }
@@ -216,7 +202,76 @@ static inline double ts2sec(int64_t ts, AVRational timebase) {
     return ts * av_q2d(timebase);
 }
 
-static int writeBitrate(const tstring& filename, StreamHandler *streamHandler, double interval) {
+static int64_t get_dts(const FrameData& frame) {
+    return frame.dts != AV_NOPTS_VALUE ? frame.dts : frame.pts;
+}
+
+// 基本的にdtsベースで処理する
+static int writeBitrate(const tstring& filename, StreamHandler *streamHandler, const double interval, const AVRational avgFrameRate) {
+    // 有効なtimestampを探す
+    int64_t firstTimestampIdx = -1;
+    auto& frames = streamHandler->frameDataList;
+    for (int64_t i = 0; i < (int64_t)frames.size(); i++) {
+        if (get_dts(frames[i]) != AV_NOPTS_VALUE) {
+            firstTimestampIdx = i;
+            break;
+        }
+    }
+    if (firstTimestampIdx >= 0) { // 有効なtimestampがある場合
+        // PCR Wrapを考慮 (AV_NOPTS_VALUEでない値を対象にする)
+        // 単調増加に補正する
+        const int64_t PCR_WRAP_CHECK_VAL = (1LL << 32) - 1;
+        const int64_t PCR_WRAP_VAL = (1LL << 33);
+        int64_t ptsOffset = 0;
+        int64_t prevts = get_dts(frames[firstTimestampIdx]);
+        for (int64_t i = firstTimestampIdx; i < (int64_t)frames.size(); i++) {
+            auto timestamp = get_dts(frames[i]);
+            if (timestamp != AV_NOPTS_VALUE) {
+                if (timestamp + ptsOffset < prevts) {
+                    if ((prevts - (timestamp + ptsOffset)) >= PCR_WRAP_CHECK_VAL) {
+                        ptsOffset += PCR_WRAP_VAL;
+                    } else if (frames[i].flags & AV_PKT_FLAG_CORRUPT) {
+                        timestamp = AV_NOPTS_VALUE;
+                    }
+                }
+                frames[i].dts = prevts = ((timestamp == AV_NOPTS_VALUE) ? AV_NOPTS_VALUE : timestamp + ptsOffset);
+            }
+        }
+        // 途中にAV_NOPTS_VALUEがある場合も多い
+        // その場合は、前後のtimestampから大雑把に線形補間する
+        prevts = -1;
+        int64_t prevtsidx = firstTimestampIdx;
+        for (int64_t i = firstTimestampIdx; i < (int64_t)frames.size(); i++) {
+            auto timestamp = get_dts(frames[i]);
+            if (timestamp != AV_NOPTS_VALUE) {
+                // 途中までのフレームについてはtimestampを大雑把に線形補間する
+                for (int64_t j = prevtsidx + 1; j < i; j++) {
+                    frames[j].dts = prevts + av_rescale(timestamp - prevts, j - prevtsidx, i - prevtsidx);
+                }
+                frames[i].dts = timestamp;
+                prevts = timestamp;
+                prevtsidx = i;
+            }
+        }
+        // その後の区間にAV_NOPTS_VALUEがあれば、最後の30フレームのtimestampを使って線形外挿する
+        const int64_t iterp_interval = std::min<int64_t>(30, prevtsidx);
+        const int64_t ts_iterp_interval = frames[prevtsidx - iterp_interval].dts;
+        for (int64_t i = prevtsidx+1; i < (int64_t)frames.size(); i++) {
+            frames[i].dts = prevts + av_rescale(prevts - ts_iterp_interval, i - prevtsidx, iterp_interval);
+        }
+        //for (int64_t i = 0; i < (int64_t)frames.size(); i++) {
+        //    fprintf(stderr, "%12lld, %d\n", frames[i].dts, frames[i].size);
+        //}
+    } else {
+        // avgFrameRate を仮定して、timestampを計算する
+        for (size_t i = 0; i < frames.size(); i++) {
+            frames[i].dts = (int64_t)av_rescale_q(i, streamHandler->streamTimebase, avgFrameRate);
+        }
+        firstTimestampIdx = 0;
+    }
+    const auto firstts = frames[firstTimestampIdx].dts;
+
+    // 出力
     double tick = 0.0;
     uint64_t sizetick = 0;
     uint64_t sizesum = 0;
@@ -226,30 +281,21 @@ static int writeBitrate(const tstring& filename, StreamHandler *streamHandler, d
         return 1;
     }
     _ftprintf(fp, _T(",kbps,kbps(avg)\n"));
-    int64_t firstpts = AV_NOPTS_VALUE;
     double framesec = 0.0;
-    uint32_t index = (uint32_t)-1;
-    for (int poc = 0; ; poc++) {
-        auto framepos = streamHandler->framePosList.copy(poc, &index);
-        if (framepos.poc == AVQSV_POC_INVALID && framepos.pts == 0) {
-            break;
+    for (int64_t i = firstTimestampIdx; i < (int64_t)frames.size(); i++) {
+        const auto& frame = frames[i];
+        const auto timestamp = frames[i].dts;
+        framesec = ts2sec(timestamp - firstts, streamHandler->streamTimebase);
+        if (tick + interval < framesec) {
+            double time = framesec - tick;
+            double kbps = sizetick * 8 / time * 0.001;
+            double avgkbps = sizesum * 8 / framesec * 0.001;
+            _ftprintf(fp, _T("%10.3f,%.2f,%.2f\n"), tick, kbps, avgkbps);
+            tick = framesec;
+            sizetick = 0;
         }
-        if (framepos.pts != AV_NOPTS_VALUE && framepos.poc != AVQSV_POC_INVALID) {
-            if (firstpts == AV_NOPTS_VALUE) {
-                firstpts = framepos.pts;
-            }
-            framesec = ts2sec(framepos.pts - firstpts, streamHandler->streamTimebase);
-            if (tick + interval < framesec) {
-                double time = framesec - tick;
-                double kbps = sizetick * 8 / time * 0.001;
-                double avgkbps = sizesum * 8 / framesec * 0.001;
-                _ftprintf(fp, _T("%10.3f,%.2f,%.2f\n"), tick, kbps, avgkbps);
-                tick = framesec;
-                sizetick = 0;
-            }
-        }
-        sizetick += framepos.size;
-        sizesum += framepos.size;
+        sizetick += frame.size;
+        sizesum += frame.size;
     }
     double time = framesec - tick;
     double kbps = sizetick * 8 / time * 0.001;
@@ -258,45 +304,7 @@ static int writeBitrate(const tstring& filename, StreamHandler *streamHandler, d
     return 0;
 }
 
-static int writeGopLength(const tstring& filename, StreamHandler *streamHandler) {
-    double tick = 0.0;
-    uint64_t sizetick = 0;
-    uint64_t sizesum = 0;
-    FILE *fp = NULL;
-    if (_tfopen_s(&fp, filename.c_str(), _T("w"))) {
-        _ftprintf(stderr, _T("failed to open output file \"%s\"\n"), filename.c_str());
-        return 1;
-    }
-    vector<uint32_t> goplenList;
-    uint32_t goplen = 0;
-    uint32_t index = (uint32_t)-1;
-    for (int poc = 0; ; poc++) {
-        auto framepos = streamHandler->framePosList.copy(poc, &index);
-        if (framepos.poc == AVQSV_POC_INVALID && framepos.pts == 0) {
-            break;
-        }
-        if (framepos.pts != AV_NOPTS_VALUE && framepos.poc != AVQSV_POC_INVALID) {
-            if ((framepos.flags & 1) && goplen > 0) {
-                goplenList.push_back(goplen);
-                goplen = 0;
-            }
-            goplen++;
-        }
-    }
-    goplenList.push_back(goplen);
-    _ftprintf(fp, _T("gop len max: %d\n"), std::accumulate(goplenList.begin(), goplenList.end(), 0, [](uint32_t a, uint32_t b) { return std::max(a, b); }));
-
-    const auto goplenAvg = std::accumulate(goplenList.begin(), goplenList.end(), 0, [](uint32_t a, uint32_t b) { return a + b; }) / (double)goplenList.size();
-    _ftprintf(fp, _T("        avg: %.2f\n"), goplenAvg);
-
-    const auto goplenStd = std::sqrt(std::accumulate(goplenList.begin(), goplenList.end(), 0.0, [goplenAvg](double a, uint32_t b) { return a + (goplenAvg - b) * (goplenAvg - b); }) / (double)std::max<int>(1, (int)goplenList.size() - 1));
-    _ftprintf(fp, _T("        std: %.2f\n"), goplenStd);
-    fclose(fp);
-    return 0;
-}
-
-
-int run(const tstring& filename, double interval = 0.0, bool check_goplen = false, int nVideoTrack = 0, int nStreamId = 0) {
+int run(const tstring& filename, double interval = 0.0) {
     av_log_set_level(AV_LOG_ERROR);
 
     //UTF-8に変換
@@ -331,37 +339,9 @@ int run(const tstring& filename, double interval = 0.0, bool check_goplen = fals
     }
     //auto nVideoIndex = selectStream(pFormatCtx, videoStreams, nVideoTrack, nStreamId);
 
-    std::unordered_map<int, std::unique_ptr<StreamHandler>> streamHandlers;
+    std::vector<std::unique_ptr<StreamHandler>> streamHandlers(pFormatCtx->nb_streams);
     for (auto index : videoStreams) {
-        streamHandlers[index] = std::make_unique<StreamHandler>();
-    }
-
-    //必要ならbitstream filterを初期化
-    for (auto& [index, st] : streamHandlers) {
-        const auto codecpar = pFormatCtx->streams[index]->codecpar;
-        st->pParserCtx = av_parser_init(codecpar->codec_id);
-        st->streamTimebase = pFormatCtx->streams[index]->time_base;
-        if (st->pParserCtx) {
-            st->pParserCtx->flags |= PARSER_FLAG_COMPLETE_FRAMES;
-            if (nullptr == (st->pCodecCtxParser = avcodec_alloc_context3(avcodec_find_decoder(codecpar->codec_id)))) {
-                _ftprintf(stderr, _T("failed to allocate context for parser.\n"));
-                return 1;
-            }
-            unique_ptr_custom<AVCodecParameters> codecParamCopy(avcodec_parameters_alloc(), [](AVCodecParameters *pCodecPar) {
-                avcodec_parameters_free(&pCodecPar);
-                });
-            int ret = 0;
-            if (0 > (ret = avcodec_parameters_copy(codecParamCopy.get(), codecpar))) {
-                _ftprintf(stderr, _T("failed to copy codec param to context for parser.\n"));
-                return 1;
-            }
-            if (0 > (ret = avcodec_parameters_to_context(st->pCodecCtxParser, codecParamCopy.get()))) {
-                _ftprintf(stderr, _T("failed to set codec param to context for parser.\n"));
-                return 1;
-            }
-            st->pCodecCtxParser->time_base = av_stream_get_codec_timebase(pFormatCtx->streams[index]);
-            st->pCodecCtxParser->pkt_timebase = pFormatCtx->streams[index]->time_base;
-        }
+        streamHandlers[index] = std::make_unique<StreamHandler>(index, pFormatCtx->streams[index]->time_base);
     }
 
     uint64_t filesize = 0;
@@ -376,34 +356,10 @@ int run(const tstring& filename, double interval = 0.0, bool check_goplen = fals
     _ftprintf(stderr, _T("analyzing video bitrate (interval: %.2f sec)...\n"), interval);
 
 
-    for (auto& [index, st] : streamHandlers) {
-        _ftprintf(stderr, _T("output bitrate of video track #%d...\n"), index + 1);
-        double dEstFrameDurationByFpsDecoder = 0.0;
-        AVRational fpsDecoder = st->pCodecCtxParser->framerate;
-        if (av_isvalid_q(fpsDecoder) && av_isvalid_q(st->streamTimebase)) {
-            dEstFrameDurationByFpsDecoder = av_q2d(av_inv_q(fpsDecoder)) * av_q2d(av_inv_q(st->streamTimebase));
-        }
-        st->framePosList.checkPtsStatus(dEstFrameDurationByFpsDecoder);
-
-        //動画の終端を表す最後のptsを挿入する
-        int64_t videoFinPts = 0;
-        const int nFrameNum = st->framePosList.frameNum();
-        if (st->framePosList.getStreamPtsStatus() & AVQSV_PTS_ALL_INVALID) {
-            videoFinPts = nFrameNum * st->framePosList.list(0).duration;
-        } else if (nFrameNum) {
-            const FramePos *lastFrame = &st->framePosList.list(nFrameNum - 1);
-            videoFinPts = lastFrame->pts + lastFrame->duration;
-        }
-        //最後のフレーム情報をセットし、m_Demux.framesの内部状態を終了状態に移行する
-        st->framePosList.fin(framePos(videoFinPts, videoFinPts, 0), pFormatCtx->duration);
-
-        //tstring outfile = filename + _T(".track") + std::to_tstring(ist->first + 1) + _T(".framepos.csv");
-        //st->framePosList.printList(outfile.c_str());
-
-        writeBitrate(filename + _T(".track") + std::to_tstring(index + 1) + _T(".bitrate.csv"), st.get(), interval);
-        if (check_goplen) {
-            writeGopLength(filename + _T(".track") + std::to_tstring(index + 1) + _T(".goplen.txt"), st.get());
-        }
+    for (auto& st : streamHandlers) {
+        if (!st) continue;
+        _ftprintf(stderr, _T("output bitrate of video track #%d...\n"), st->streamId + 1);
+        writeBitrate(filename + _T(".track") + std::to_tstring(st->streamId + 1) + _T(".bitrate.csv"), st.get(), interval, pFormatCtx->streams[st->streamId]->avg_frame_rate);
     }
 
     if (pFormatOption) {
@@ -497,16 +453,12 @@ int _tmain(int argc, TCHAR **argv) {
     }
     vector<tstring> filelist;
     double interval = 0.0;
-    bool check_goplen = false;
     for (int i = 1; i < argc; i++) {
         const TCHAR *option_name = nullptr;
         if (argv[i][0] == _T('-')) {
             switch (argv[i][1]) {
             case 'i':
                 option_name = _T("interval");
-                break;
-            case 'g':
-                option_name = _T("goplen");
                 break;
             case '-':
                 option_name = &argv[i][2];
@@ -526,8 +478,6 @@ int _tmain(int argc, TCHAR **argv) {
                     option_error(option_name, argv[i]);
                     break;
                 }
-            } else if (0 == _tcscmp(option_name, _T("goplen"))) {
-                check_goplen = true;
             } else if (0 == _tcscmp(option_name, _T("help"))) {
                 print_help();
                 return 0;
@@ -541,7 +491,7 @@ int _tmain(int argc, TCHAR **argv) {
         return 1;
     }
     for (auto filename : filelist) {
-        run(filename, interval, check_goplen);
+        run(filename, interval);
     }
     return 0;
 }

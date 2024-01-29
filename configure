@@ -356,7 +356,7 @@ fi
 
 SRC_CHECKBITRATE=" \
 CheckBitrate.cpp \
-rgy_codepage.cpp          rgy_event.cpp \
+rgy_codepage.cpp \
 rgy_filesystem.cpp        rgy_util.cpp \
 "
 
