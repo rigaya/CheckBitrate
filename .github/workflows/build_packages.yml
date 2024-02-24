@@ -16,8 +16,16 @@ jobs:
         include:
           - dockerimg: ubuntu2004
             pkgtype: deb
+            arch: x86_64
+          - dockerimg: ubuntu2204
+            pkgtype: deb
+            arch: x86_64
           - dockerimg: fedora32
             pkgtype: rpm
+            arch: x86_64
+          - dockerimg: ubuntu2204
+            pkgtype: deb
+            arch: arm64
 
     env:
       DOCKER_FILE:  docker/docker_${{ matrix.dockerimg }}
@@ -38,25 +46,29 @@ jobs:
           OUTPUT_DIR=`pwd`/../output
           LOCAL_USER_ID=$(id -u)
           LOCAL_GROUP_ID=$(id -g)
-          echo ::set-output name=tagged_image::${IMAGE}:${TAG}
-          echo ::set-output name=tag::${TAG}
-          echo ::set-output name=nproc::${NPROC}
-          echo ::set-output name=output_dir::${OUTPUT_DIR}
-          echo ::set-output name=local_user_id::${LOCAL_USER_ID}
-          echo ::set-output name=local_group_id::${LOCAL_GROUP_ID}
+          echo "tagged_image=${IMAGE}:${TAG}" >> $GITHUB_OUTPUT
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "nproc=${NPROC}" >> $GITHUB_OUTPUT
+          echo "output_dir=${OUTPUT_DIR}" >> $GITHUB_OUTPUT
+          echo "local_user_id=${LOCAL_USER_ID}" >> $GITHUB_OUTPUT
+          echo "local_group_id=${LOCAL_GROUP_ID}" >> $GITHUB_OUTPUT
 
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           submodules: true
           fetch-depth: 0
 
+      - name: Set up QEMU
+        if: matrix.arch != 'x86_64'
+        uses: docker/setup-qemu-action@v3
+
       - name: Set up Docker Buildx
         id: buildx
-        uses: docker/setup-buildx-action@v1
+        uses: docker/setup-buildx-action@v3
 
       - name: Cache Docker layers
-        uses: actions/cache@v2
+        uses: actions/cache@v4
         with:
           path: /tmp/.buildx-cache
           key: ${{ github.ref }}-${{ env.DOCKER_IMAGE }}-${{ github.sha }}
@@ -72,11 +84,12 @@ jobs:
 
       - name: Build Docker image
         id: docker_build
-        uses: docker/build-push-action@v2
+        uses: docker/build-push-action@v5
         with:
           context: ./
           file: ${{ env.DOCKER_FILE }}
           builder: ${{ steps.buildx.outputs.name }}
+          platforms: linux/${{ matrix.arch }}
           push: false
           load: true
           tags: ${{ steps.prep.outputs.tagged_image }}
@@ -98,7 +111,7 @@ jobs:
       - name: Build Exec
         id: build_exec
         run: |
-          docker run -dit --rm -v ${{ steps.prep.outputs.output_dir }}:/output -u "$(id -u):$(id -g)" --name build_pkg ${{ steps.prep.outputs.tagged_image }}
+          docker run -dit --rm --platform linux/${{ matrix.arch }} -v ${{ steps.prep.outputs.output_dir }}:/output -u "$(id -u):$(id -g)" --name build_pkg ${{ steps.prep.outputs.tagged_image }}
           docker exec build_pkg ./configure
           docker exec build_pkg make -j${{ steps.prep.outputs.nproc }}
           docker exec build_pkg ./checkbitrate --help
@@ -106,7 +119,28 @@ jobs:
           docker exec build_pkg sh -c "cp -v ./*.${{ env.PKG_TYPE }} /output/"
           PKGFILE=`ls ${{ steps.prep.outputs.output_dir }}/*.${{ env.PKG_TYPE }}`
           echo ${PKGFILE}
-          echo ::set-output name=pkgfile::${PKGFILE}
+          echo "pkgfile=${PKGFILE}" >> $GITHUB_OUTPUT
+
+      - name: Normalize path and get filename
+        id: normalize_path
+        run: |
+          normalized_path=$(realpath "${{ steps.build_exec.outputs.pkgfile }}")
+          filename=$(basename "${{ steps.build_exec.outputs.pkgfile }}")
+          echo "Normalized path: $normalized_path"
+          echo "Filename: $filename"
+          echo "normalized_path=$normalized_path" >> $GITHUB_OUTPUT
+          echo "filename=$filename" >> $GITHUB_OUTPUT
+
+      - name: Calc hash
+        id: calc_hash
+        run: |
+          7z h -scrc* ${{ steps.build_exec.outputs.pkgfile }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.normalize_path.outputs.filename }}
+          path: ${{ steps.normalize_path.outputs.normalized_path }}
 
       - name: Upload Release Asset
         id: upload-release-asset 
