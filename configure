@@ -94,10 +94,12 @@ EXTRACXXFLAGS=""
 EXTRALDFLAGS=""
 SRCS=""
 X86_64=1
+ARM64=0
 NO_RDTSCP_INTRIN=0
 ENABLE_AVSW_READER=1
 
 CHECK_LIBAV_NAMES="libavutil libavcodec libavformat"
+LIBAV_STATIC=0
 LIBAV_CFLAGS=""
 LIBAV_LIBS=""
 ENABLE_AVSW_READER=1
@@ -158,6 +160,9 @@ for opt; do
         --enable-debug)
             ENABLE_DEBUG=1
             ;;
+        --libav-static)
+            LIBAV_STATIC=1
+            ;;
         --pkg-config=*)
             PKGCONFIG="$optarg"
             ;;
@@ -203,9 +208,12 @@ if [ `echo | ${CXX} -E -dM - | egrep "WIN32|WIN64" | wc --lines` -ne 0 ]; then
     cnf_write "For Windows, use Visual Studio."
     exit 1 
 fi
-
-if [ `echo | ${CXX} -E -dM - | grep "x86_64" | wc --lines` -eq 0 ]; then
+if [ `echo | ${CXX} -E -dM - | grep "__ARM_ARCH_ISA_A64" | wc --lines` -ne 0 ]; then
+    ARM64=1
     X86_64=0
+elif [ `echo | ${CXX} -E -dM - | grep "x86_64" | wc --lines` -ne 0 ]; then
+    ARM64=0
+    X86_64=1
 fi
 
 CFLAGS="-Wall -Wno-missing-braces -Wno-unknown-pragmas -Wno-unused \
@@ -215,14 +223,13 @@ CXXFLAGS="-Wall -Wno-missing-braces -Wno-unknown-pragmas -Wno-unused \
 -I${SRCDIR} -I${SRCDIR}/CheckBitrate  \
 "
 LDFLAGS="-L. -ldl -lm -lstdc++ -lstdc++fs"
-if [ $X86_64 -ne 0 ]; then
+if [ $ARM64 -ne 0 ]; then
+    CFLAGS="${CFLAGS} -DLINUX64"
+    CXXFLAGS="${CXXFLAGS} -DLINUX64"
+elif [ $X86_64 -ne 0 ]; then
     CFLAGS="${CFLAGS} -DLINUX64 -m64"
     CXXFLAGS="${CXXFLAGS} -DLINUX64 -m64"
     LDFLAGS="${LDFLAGS} -m64"
-else
-    CFLAGS="${CFLAGS} -DLINUX32 -m32"
-    CXXFLAGS="${CXXFLAGS} -DLINUX32 -m32"
-    LDFLAGS="${LDFLAGS} -m32"
 fi
 
 if cxx_check "pthread" "${CXXFLAGS} -pthread ${LDFLAGS} -lpthread" ; then
@@ -242,19 +249,13 @@ else
 fi
 cnf_write "OK"
 
-if cxx_check "-msse4.1" "${CXXFLAGS} -msse4.1 ${LDFLAGS}" ; then
-    CXXFLAGS="$CXXFLAGS -msse4.1"
-else
-    cnf_write "SSE4.1 not supported with this compiler." 
-    exit 1
-fi
-cnf_write "OK"
-
-if ! cxx_check "__rdtscp()" "${CXXFLAGS} ${LDFLAGS}" "" "x86intrin.h" "unsigned int a = 0; auto i = __rdtscp(&a);" ; then
-    CXXFLAGS="${CXXFLAGS} -DNO_RDTSCP_INTRIN=1"
-    cnf_write "no"
-else
-    cnf_write "yes"
+if [ $X86_64 -ne 0 ]; then
+    if ! cxx_check "__rdtscp()" "${CXXFLAGS} ${LDFLAGS}" "" "x86intrin.h" "unsigned int a = 0; auto i = __rdtscp(&a);" ; then
+        CXXFLAGS="${CXXFLAGS} -DNO_RDTSCP_INTRIN=1"
+        cnf_write "no"
+    else
+        cnf_write "yes"
+    fi
 fi
 
 if [ ! $ENABLE_DEBUG -eq 0 ]; then
@@ -302,14 +303,18 @@ if [ -n "$EXTRALDFLAGS" ]; then
 fi
 
 if [ $ENABLE_AVSW_READER -ne 0 ]; then
+    PKGCONFIG_LIBAV_STATIC=""
+    if [ $LIBAV_STATIC -ne 0 ]; then
+        PKGCONFIG_LIBAV_STATIC="--static"
+    fi
     if [ $USE_PKGCONFIG -ne 0 ]; then
         printf "checking libavcodec with pkg-config..."
         if ! ${PKGCONFIG} --exists $CHECK_LIBAV_NAMES ; then
             cnf_write "libs could not be detected by ${PKGCONFIG}. [ PKG_CONFIG_PATH=${PKG_CONFIG_PATH} ]"
         else
             cnf_write "OK"
-            LIBAV_LIBS=`${PKGCONFIG} --libs ${CHECK_LIBAV_NAMES}`
-            LIBAV_CFLAGS=`${PKGCONFIG} --cflags ${CHECK_LIBAV_NAMES}`
+            LIBAV_LIBS=`${PKGCONFIG} --libs ${PKGCONFIG_LIBAV_STATIC} ${CHECK_LIBAV_NAMES}`
+            LIBAV_CFLAGS=`${PKGCONFIG} --cflags ${PKGCONFIG_LIBAV_STATIC} ${CHECK_LIBAV_NAMES}`
         fi
     fi
     
